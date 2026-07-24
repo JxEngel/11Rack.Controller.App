@@ -67,11 +67,14 @@ target_sources(RackControllerTests PRIVATE
     Source/Rack/SevenBitCodecTests.cpp
     Source/Rack/EffectDefinitions.cpp
     Source/Rack/EffectDefinitionsTests.cpp
+    Source/Rack/MidiTransport.cpp
+    Source/Rack/MidiTransportTests.cpp
 )
 
 target_link_libraries(RackControllerTests PRIVATE
     juce::juce_core
     juce::juce_audio_basics
+    juce::juce_audio_devices
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )

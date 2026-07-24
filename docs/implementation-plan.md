@@ -122,9 +122,17 @@ sequences already captured in [protocol-spec.md](protocol-spec.md) and
       compatibility — lower priority than the live-protocol pieces above
 
 **Transport layer**
-- [ ] `MidiTransport.{h,cpp}` — thin wrapper around `juce::MidiInput`/`MidiOutput`; the only place
-      that touches JUCE's MIDI API directly. Likely hard to unit-test meaningfully without real
-      hardware or a fake transport — note as a known gap rather than skipping silently if so.
+- [x] `MidiTransport.{h,cpp}` + `MidiTransportTests.cpp` — **done (2026-07-24)**: thin wrapper
+      around `juce::MidiInput`/`MidiOutput` (the only place that touches JUCE's MIDI API directly),
+      open/close/send/receive raw bytes, with `WeakReference`-based safe thread-hopping for the
+      receive callback (not a `juce::Component`, so `Component::SafePointer` wasn't available -
+      `WeakReference` is JUCE's equivalent for non-Component classes). As anticipated, most of its
+      real behavior can't be unit-tested without physical hardware or a virtual/loopback MIDI port
+      (neither available in an automated run) — the 7 tests cover only the hardware-independent
+      edge cases (invalid device identifiers, operations with nothing open, idempotent close).
+      Real send/receive is verified by hand against the actual unit instead — see
+      [protocol-spec.md](protocol-spec.md)'s hardware validation log. Not yet run/verified in a
+      real build environment.
 
 **Service layer**
 - [ ] `RackController.{h,cpp}` + `RackControllerTests.cpp` — the facade the UI will call
