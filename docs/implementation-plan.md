@@ -135,13 +135,32 @@ sequences already captured in [protocol-spec.md](protocol-spec.md) and
       real build environment.
 
 **Service layer**
-- [ ] `RackController.{h,cpp}` + `RackControllerTests.cpp` — the facade the UI will call
-      (`selectRig(bank, rig)`, `requestCurrentRig()`, `getEffectCount()`, a `Listener` interface for
-      hardware-originated changes) — owns a `MidiTransport`, uses the codec classes internally,
-      mirrors the `ASYNCSET`/`RESPOND` dispatch from `ElevenReceiver.parseMessage()` but exposes
-      clean callbacks instead of raw bytes
-- [ ] **Both write paths needed (resolved by Milestone 0 CC-chart research)**: a MIDI CC sender for
-      live single-parameter tweaks, and a bulk SysEx rig writer for save/load — not an either/or
+- [x] `RackController.{h,cpp}` + `RackControllerTests.cpp` — **done (2026-07-24)**: the facade the
+      UI will call. Owns a `MidiTransport`, uses `SysExFrame`/`SevenBitCodec` internally, exposes:
+      - Queries confirmed working against real hardware: `requestEffectCount()`,
+        `requestMainVolume()`, `requestCurrentRig()`, `requestRigName()`, `requestRigDescription()`,
+        `requestEffectDescription()`, `requestBulkRig()`
+      - `selectRig(RigId)` — the one write confirmed working against real hardware
+      - `saveRig()`, `setRigName()`, `setMainVolume()`, `setTunerOn()` — ported from ElevenHack's
+        `ElevenTransmitter` for API completeness, **NOT hardware-validated**; do not wire any of
+        these to a UI control without a deliberate decision to test them first (`saveRig`
+        specifically overwrites stored data)
+      - A `Listener` interface (`onEffectCountReceived`, `onMainVolumeReceived`,
+        `onCurrentRigReceived`, `onRigNameReceived`, `onEffectDescriptionReceived`,
+        `onTunerStateReceived`, plus raw-payload callbacks for Rig Description and Bulk Rig since
+        those aren't fully decoded yet, and `onUnhandledMessage` for anything unrecognized)
+      - Simplification vs. `ElevenReceiver`: dispatches identically for `RESPOND` vs `ASYNCSET`
+        (ElevenHack's own two switch blocks call the same handlers anyway) — documented in the
+        header as an intentional, easily-revisited choice, not an oversight
+      - 9 tests drive the real parsing/dispatch pipeline directly (via a friend-class test seam,
+        `RackController::handleIncomingBytes`) using every real captured reply from this session:
+        Effect Count, Main Volume, Current Rig Number (the confirmed B4), Rig Name ("Big Blue"),
+        Effect Description ("Eleven"/"DigiElvnELVu"), Rig Description (raw payload), plus
+        malformed-input and not-connected edge cases
+      - Covers the SysEx-based write path (`selectRig`, `setMainVolume`, etc.) from the Milestone 0
+        CC-chart research; MIDI CC sending for live single-parameter tweaks is not yet implemented
+        here — still open
+      - Not yet run/verified in a real build environment
 
 ## Milestone 4 — Hardware validation
 

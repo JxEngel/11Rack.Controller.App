@@ -69,10 +69,13 @@ target_sources(RackControllerTests PRIVATE
     Source/Rack/EffectDefinitionsTests.cpp
     Source/Rack/MidiTransport.cpp
     Source/Rack/MidiTransportTests.cpp
+    Source/Rack/RackController.cpp
+    Source/Rack/RackControllerTests.cpp
 )
 
 target_link_libraries(RackControllerTests PRIVATE
     juce::juce_core
+    juce::juce_events
     juce::juce_audio_basics
     juce::juce_audio_devices
     juce::juce_recommended_config_flags
