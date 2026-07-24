@@ -1,0 +1,27 @@
+This project includes source code derived from ElevenHack
+(https://gitlab.com/schmidg/elevenhack), Copyright (c) 2013-2020 Guillaume Schmid, licensed
+under the Apache License, Version 2.0. A full copy of that license is included at
+docs/third-party-licenses/ElevenHack-APACHE-2.0-LICENSE.txt.
+
+Per Apache License 2.0 Section 4(d), the attribution notice from ElevenHack's own NOTICE file is
+reproduced below:
+
+    ElevenHack has been created by Guillaume Schmid after hundred of hours experimenting with the
+    ElevenRack device. The source provides an implementation of tfx file format parsing and
+    protocol to upload/retrieve rigs from the device.
+    Please, mention this project and the author on any derivative work.
+
+Files in this repository derived from, or whose protocol/data-model knowledge originates from,
+ElevenHack's reverse-engineering work:
+
+- Source/Rack/SysExFrame.h, Source/Rack/SysExFrame.cpp
+  (from ElevenHack's gs.elevenhack.midi.SysEx)
+- Source/Rack/SevenBitCodec.h, Source/Rack/SevenBitCodec.cpp
+  (from ElevenHack's gs.elevenhack.midi.SysEx and gs.elevenhack.ParseUtils)
+- Source/Rack/EffectDefinitions.h, Source/Rack/EffectDefinitions.cpp
+  (from ElevenHack's gs.elevenhack.ER.Effect and gs.elevenhack.ER.EffectAmpCab)
+
+These are original C++ implementations - not line-by-line ports - independently structured and
+tested against real Eleven Rack hardware captures (see docs/protocol-spec.md). The underlying
+protocol knowledge they encode (SysEx message format, command IDs, effect/parameter mappings)
+originates from ElevenHack, which was itself developed without official AVID documentation.

@@ -258,7 +258,10 @@ interface layer.
 ### Licensing note
 ElevenHack is Apache-2.0. If we port or closely derive code from it, we need to retain its
 copyright notice/license (see its `NOTICE` file) per the license terms — straightforward, but a
-real obligation, not just a courtesy.
+real obligation, not just a courtesy. **Done (2026-07-24)**: root [`NOTICE`](../NOTICE) file and
+[`docs/third-party-licenses/ElevenHack-APACHE-2.0-LICENSE.txt`](third-party-licenses/ElevenHack-APACHE-2.0-LICENSE.txt)
+added, now that real ElevenHack-derived code exists in `Source/Rack/` (`SysExFrame`,
+`SevenBitCodec`, `EffectDefinitions`).
 
 ## Reference Material To Collect
 

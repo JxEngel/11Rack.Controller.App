@@ -51,9 +51,11 @@ just the checklist, kept in sync as we go. Check items off as they're actually d
       `FetchContent` (no manual JUCE install/submodule needed), `Source/Main.cpp` +
       `Source/MainComponent.{h,cpp}`. Not yet build-verified in a sandbox without `cmake`/MSVC on
       PATH — first real build happens per [docs/development-guide.md](development-guide.md).
-- [ ] Add Apache-2.0 attribution/NOTICE for ElevenHack-derived protocol knowledge, per its license
-      terms (see Licensing Note in project-overview.md) — not yet added; do this once actual
-      ElevenHack-derived code (not just protocol knowledge) lands in Milestone 3.
+- [x] Add Apache-2.0 attribution/NOTICE for ElevenHack-derived protocol knowledge, per its license
+      terms (see Licensing Note in project-overview.md) — **Done (2026-07-24)**: root `NOTICE` file
+      plus `docs/third-party-licenses/ElevenHack-APACHE-2.0-LICENSE.txt` (the full Apache-2.0 text,
+      reproduced from ElevenHack's own `LICENCE.txt`, excluding license blocks for ElevenHack's own
+      dependencies we didn't use — HyperSQL, MigLayout, JUnit).
 - [x] Basic MIDI I/O: list devices, open a connection, send/receive raw SysEx — implemented as a
       small MIDI monitor (device pickers, hex log of incoming traffic, a button to send a
       Universal SysEx Identity Request). This is the first real, testable artifact — point it at
