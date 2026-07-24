@@ -153,7 +153,41 @@ will depend on.
 | 116 | FX1 Setting 5 | |
 | 117 | FX1 Setting 6 | |
 | 118 | FX1 Setting 7 | |
-| 119 | FX1 Setting 9 | *(sic — manual repeats "FX1 Setting 9" here as well as at CC5; possible OCR/manual error, needs checking against a second copy of the manual or hardware)* |
+| 119 | FX1 Setting 9 | *(sic — manual repeats "FX1 Setting 9" here as well as at CC5; likely a transcription error in this generic table, not a real duplicate — see "Second manual revision found" below and the Open Items entry)* |
+
+## Second manual revision found — full per-effect/per-amp-model CC breakdown (2026-07-24)
+
+The table above came from one manual edition (`archive.org/details/manualzilla-id-6921695`,
+Chapter 11). While researching the CC119 duplicate, a **different manual revision** turned up
+(Guide Part Number 9320-65073-00 REV B 06/21) with a much more detailed Chapter 9 — a real
+per-effect-model and per-amp-model CC breakdown, not just the generic "Setting N" labels above.
+Full extraction, including every amp model's real tone-knob labels and every effect's real CC
+list, is captured in
+[eleven-rack-user-guide-chapter9-midi-cc-notes.md](samples/eleven-rack-user-guide-chapter9-midi-cc-notes.md)
+(text-extracted via `pdftotext`, not visually verified against the original table layout — treat
+as high-confidence but not hardware-proven). Headline findings:
+
+- **Resolves the CC119 duplicate**: it's a real, distinct CC (used alongside CC5 in the same
+  effect's own CC list, e.g. Multi-Chorus's FX1 mapping) — the "duplicate of Setting 9" in the
+  older generic table was itself a transcription error, not a real hardware quirk.
+- **Fixed two real ordering bugs** before any hardware test caught them the hard way: Mod slot's
+  Chorus/Vibrato effect (Mode toggle belongs at Setting 5, not Setting 1) and Distortion's Tri Knob
+  Disto/"Tri-Knob Fuzz" (Volume/Sustain/Tone, not Sustain/Tone/Level) — both corrected in
+  `EffectDefinitions.cpp` with comments citing this source.
+- **New real parameter data** for Vibe Phaser and both Reverb types (previously entirely
+  name-only) — added to `EffectDefinitions.cpp` and `EffectEditorComponent`'s Mod/Reverb slots.
+- **Significant new gap found, not yet resolved**: the manual lists at least 31 distinct amp model
+  names with real tone-knob labels, vs. our `EffectDefinitions::ampModelOptions()`'s 16 — several
+  names (Black SR, Black Mini, J45, MS-30, RB01b...) don't obviously correspond to anything in our
+  list. Needs dedicated reconciliation, likely including a real hardware capture of the Amp/Cab
+  parameter, before building any Amp tone-knob editor.
+- **Narrows (doesn't close) the rig-switching question**: CC32 is documented as a plain
+  Factory/User 2-value toggle, not a general MIDI Bank Select MSB/LSB pair as originally
+  hypothesized from observed traffic (see "fourth round" below).
+- Real Delay parameter data exists too (BBD/Dyn/Tape Echo, all fully named), but the manual's
+  print order for Delay doesn't match ascending Setting-N/CC order the way every other effect
+  category does — reconstructing the real order needs more care, so it's captured in the reference
+  doc but not yet implemented in code.
 
 ## Hardware validation log
 
@@ -398,12 +432,17 @@ Summary retained here for quick reference:
 - [ ] Determine what `CMD_TUNER_A` (`0x41`) represents — a real paired `ASYNCSET` alongside
       `CMD_TUNER` (`0x40`) on every tuner state change, not unused/dead as assumed. Possible generic
       "referenced command changed" wrapper - unconfirmed (see sixth round above).
-- [ ] Resolve rig-switching mechanism (Program Change vs. CC vs. SysEx-only) — partially
-      illuminated: the unit emits standard MIDI Bank Select (CC0/CC32) alongside a SysEx rig-select
-      (see fourth round above), but whether Bank Select + Program Change alone can *drive* a rig
-      switch (as an alternative to the SysEx write) is still untested.
-- [ ] Resolve the CC119/"FX1 Setting 9" duplicate — likely a manual error, confirm against a second
-      source or hardware behavior
+- [ ] Resolve rig-switching mechanism (Program Change vs. CC vs. SysEx-only) — **narrowed
+      (2026-07-24)**: the official manual documents CC32 as a plain Factory/User 2-value toggle
+      ("User/Factory Bank Change"), not a general MIDI Bank Select MSB/LSB pair as originally
+      hypothesized from observed traffic (fourth round) — but whether Program Change (or this Bank
+      Change CC) alone can *drive* a rig switch, vs. only the SysEx `CMD_CURR_RIG_NUM` write, is
+      still untested.
+- [x] Resolve the CC119/"FX1 Setting 9" duplicate — **resolved (2026-07-24)**: a newer manual
+      revision's per-effect CC breakdown shows CC119 used simultaneously with CC5 in the same
+      effect's own CC list (Multi-Chorus's FX1 mapping) — it's a real, distinct CC; the "duplicate"
+      in the generic table was a transcription error in that source, not a hardware quirk. See
+      [eleven-rack-user-guide-chapter9-midi-cc-notes.md](samples/eleven-rack-user-guide-chapter9-midi-cc-notes.md).
 - [ ] Cabinet/mic-position mapping still not found in either source
 - [ ] Rig Description's per-tuple middle byte appears to be a monotonic counter assigned on each
       rig (re)load, not a stable identity — confirm with repeated same-state queries (see fourth
@@ -411,12 +450,29 @@ Summary retained here for quick reference:
 - [ ] Determine what the unhandled `ASYNCSET` command `0x03` (`CMD_SAVE_RIG`'s command byte, but in
       an async context) actually represents — arrives alongside `CMD_CURR_RIG_NUM` after a rig
       select; ElevenHack doesn't handle this case either
-- [ ] Check whether other single-value parameters (beyond Main Volume) were also ported with the
-      same unsigned-instead-of-signed mistake `encodeValue` had — Main Volume is fixed, but nothing
-      else has been checked yet
+- [x] Check whether other single-value parameters (beyond Main Volume) were also ported with the
+      same unsigned-instead-of-signed mistake `encodeValue` had — **resolved (2026-07-24)**:
+      audited every caller of ElevenHack's `ParseUtils.byteToEncodedInt`/`SysEx.buildSetEncoded01`
+      in the Java source; Main Volume is the *only* parameter that ever used this encoding scheme.
+      Every other single-value command uses plain unencoded bytes and is naturally non-negative
+      (tuner on/off, bank/rig numbers), or isn't sent per-parameter at all (per-effect knobs only
+      round-trip through full-rig bulk transfers in ElevenHack, never individually).
 - [ ] Verify the "CC 'Setting N' maps positionally" hypothesis for **non-knob** params (toggles,
-      selectors) — confirmed for knobs only (Distortion, above). `EffectEditorComponent`'s Mod slot
-      now applies the same positional mapping to Chorus/Vibrato's Mode toggle and Sync selector as
-      an untested extension; needs a real hardware check before treating it as confirmed.
-- [ ] Wah and Mod slots in `EffectEditorComponent` (added 2026-07-24) are not yet hardware-tested —
-      only Distortion has been confirmed so far (see implementation-plan.md Milestone 5).
+      selectors) against real hardware — still knob-only confirmed (Distortion). However, the
+      Chorus/Vibrato and Vibe Phaser orderings now used in `EffectEditorComponent`'s Mod slot are
+      no longer a guess extending that hypothesis - they're sourced directly from the official
+      manual's own per-effect CC breakdown (see above), a stronger basis than before, just not yet
+      hardware-confirmed.
+- [ ] Wah, Mod, and Reverb slots in `EffectEditorComponent` (added/expanded 2026-07-24) are not yet
+      hardware-tested — only Distortion has been confirmed so far (see implementation-plan.md
+      Milestone 5).
+- [ ] **New (2026-07-24)**: the official manual lists at least 31 distinct amp model names with
+      real tone-knob CCs, vs. `EffectDefinitions::ampModelOptions()`'s 16 (ported from ElevenHack) —
+      several names don't obviously match anything in our list (Black SR, Black Mini, J45, MS-30,
+      RB01b...). Needs dedicated reconciliation - likely a real hardware capture of the Amp/Cab
+      parameter value - before an Amp tone-knob editor can be built. See the reference doc above.
+- [ ] **New (2026-07-24)**: real per-knob Delay data exists in the official manual (BBD/Dyn/Tape
+      Echo, all fully named) but its printed order doesn't follow ascending Setting-N/CC order the
+      way every other effect category does, unlike Amp/Distortion/Mod/Reverb — reconstructing the
+      true Setting-N order needs more care than a direct transcription. Captured in the reference
+      doc but not yet implemented in `EffectDefinitions`/`EffectEditorComponent`.

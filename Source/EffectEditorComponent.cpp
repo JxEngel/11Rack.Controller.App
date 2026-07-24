@@ -47,15 +47,27 @@ namespace
                 "Mod",
                 50, // "Modulation On/Off"
                 { 61, 52, 53, 54, 57, 51, 56 }, // "Modulation Setting 1-7"
-                { 11, 39, 40, 34, 71 }, // Chorus/Vibrato (11,39,40), Orange Phaser (34,71)
+                { 11, 39, 40, 34, 71, 35, 46 }, // Chorus/Vibrato, Orange Phaser, Vibe Phaser
                 11, // Chorus/Vibrato
                 "Only Mod-slot effects with real decoded parameters are listed here (Chorus/"
-                "Vibrato, Orange Phaser) - others this slot can hold (Vibe Phaser, Multi Chorus, "
+                "Vibrato, Orange Phaser, Vibe Phaser) - others this slot can hold (Multi Chorus, "
                 "Flanger, Roto Speaker) have no decoded knobs in EffectDefinitions and are "
-                "omitted. The positional \"Setting N\" mapping is hardware-confirmed for knobs "
-                "(see the Distortion slot), but applying it here to the Mode switch and Sync "
-                "selector is an untested extension of that hypothesis. Not yet hardware-tested. "
-                "No live readback.",
+                "omitted. The CC order for Chorus/Vibrato and Vibe Phaser is sourced directly "
+                "from the official Eleven Rack User Guide (Chapter 9); Orange Phaser's positional "
+                "mapping is hardware-confirmed for knobs (see the Distortion slot). Not yet "
+                "hardware-tested for this slot. No live readback.",
+            },
+            {
+                "Reverb",
+                36, // "Reverb On/Off"
+                { 18, 38, 40, 39, 76, 41 }, // "Reverb Setting 1-6"
+                { 37, 47, 51, 52, 53 }, // Spring_Reverb, Stereo Reverb
+                37, // Blackpanel Spring Reverb
+                "Real parameters sourced from the official Eleven Rack User Guide (Chapter 9) - "
+                "Mix/Decay/Tone for Spring Reverb, plus Pre-Delay for Stereo Reverb. Stereo "
+                "Reverb's \"Type\" selector (CC 76, ~25 named reverb types) is NOT included - its "
+                "range-to-name mapping wasn't transcribed with enough confidence to encode without "
+                "a hardware check. Not yet hardware-tested. No live readback.",
             },
         };
         return configs;

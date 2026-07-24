@@ -62,7 +62,7 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
     from a real device-confirmed reply — there's no query for tuner state, so it won't show
     anything until you either click a button here or engage the tuner on the unit itself.
   - **Effect Editor** — live per-effect parameter editing over MIDI CC, driven by
-    `EffectDefinitions`. A **Slot** picker (Distortion / Wah / Mod) followed by an **Effect**
+    `EffectDefinitions`. A **Slot** picker (Distortion / Wah / Mod / Reverb) followed by an **Effect**
     picker scoped to whichever models actually have real decoded parameters for that slot, then
     a Bypass toggle and one control per knob/switch/selector, sent live as you move them. No live
     readback (MIDI CC has no query mechanism) and no auto-detection of what's actually loaded in

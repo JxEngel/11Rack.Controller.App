@@ -8,19 +8,22 @@
 #include <vector>
 
 // Per-effect parameter editing screen (Milestone 5), generalized across the slots where we have
-// both a CC mapping and real per-knob data in EffectDefinitions: Distortion, Wah, and Mod. The CC
-// "Setting N" positional mapping is hardware-confirmed for knobs (Distortion, 2026-07-24 - see
-// docs/protocol-spec.md "seventh round": CC 27 moved the Overdrive knob of a loaded "Green JRC
-// Disto", exactly matching EffectDefinitions' knob order). Extending that same positional mapping
-// to non-knob params (Mod's Mode toggle / Sync selector) is an untested extension of the
-// hypothesis, called out in that slot's note text below rather than presented as confirmed.
+// both a CC mapping and real per-knob data in EffectDefinitions: Distortion, Wah, Mod, and Reverb.
+// The CC "Setting N" positional mapping is hardware-confirmed for knobs (Distortion, 2026-07-24 -
+// see docs/protocol-spec.md "seventh round": CC 27 moved the Overdrive knob of a loaded "Green JRC
+// Disto", exactly matching EffectDefinitions' knob order). Mod and Reverb's real parameter data
+// (including the Chorus/Vibrato and Vibe Phaser param order/CCs, and Reverb's Mix/Decay/Tone/
+// Pre-Delay) comes from the official Eleven Rack User Guide, Chapter 9 - not yet confirmed against
+// real hardware, called out in each slot's note text rather than presented as confirmed.
 //
-// Reverb, Delay, and the Amp's tone knobs are deliberately NOT included here - ElevenHack never
-// decoded real parameters for any Reverb or Delay variant, and Amp/Cab only has a model selector,
-// no Gain/Bass/Mid/Treble/etc. knobs, despite the CC chart implying 14 of them exist. FX1/FX2 are
-// also omitted - EffectDefinitions doesn't record which effect families a given rig actually
-// assigns to those slots. Building editors for any of these would just be non-functional UI; see
-// docs/implementation-plan.md Milestone 5 and docs/protocol-spec.md "Open Items".
+// Delay and the Amp's tone knobs are deliberately NOT included here yet. The official manual does
+// have real per-knob data for both (BBD/Dyn/Tape Delay; 16 named amp models each with their own
+// tone-knob labels) - see docs/protocol-spec.md - but Delay's CC-to-Setting-N order needs careful
+// reconstruction (the manual's print order isn't the real Setting-N order), and Amp's data is
+// shaped differently (one effect ID with 16 selectable models, not 16 separate effect IDs), which
+// doesn't fit this component's current "pick an effect ID from a list" pattern. FX1/FX2 are also
+// omitted - EffectDefinitions doesn't record which effect families a given rig actually assigns to
+// those slots. See docs/implementation-plan.md Milestone 5 and docs/protocol-spec.md "Open Items".
 //
 // Two real limitations, both deliberate and documented rather than silently glossed over:
 //  1. There's no way to auto-detect which effect is actually loaded in a slot right now - that

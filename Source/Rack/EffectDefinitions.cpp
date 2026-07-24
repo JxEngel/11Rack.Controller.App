@@ -134,8 +134,13 @@ namespace Rack::EffectDefinitions
             });
 
             // --- Distortion (5 distinct models, each with its own knob labels) ---
+            // Tri Knob Disto's param order/labels below match the official Eleven Rack User
+            // Guide, Chapter 9 ("Tri-Knob Fuzz": Bypass=CC25, Volume=CC27/Setting1,
+            // Sustain=CC78/Setting2, Tone=CC79/Setting3) rather than ElevenHack's original
+            // Sustain/Tone/Level order - the same category of ordering bug as Chorus/Vibrato,
+            // caught here from the manual before ever reaching a hardware test of this model.
             addGroup (all, { 29 }, "Tri Knob Disto", {
-                bypass(), knob ("Driv", "Sustain"), knob ("Tone", "Tone"), knob ("Levl", "Level"),
+                bypass(), knob ("Levl", "Volume"), knob ("Driv", "Sustain"), knob ("Tone", "Tone"),
             });
             addGroup (all, { 30 }, "Black Op Disto", {
                 bypass(), knob ("Driv", "Distortion"), knob ("Tone", "Cut"), knob ("Levl", "Volume"),
@@ -158,19 +163,40 @@ namespace Rack::EffectDefinitions
             addGroup (all, { 55 }, "Black Wah", { bypass(), knob ("Filt", "Position"), knob ("VxCr", "VxCr") });
 
             // --- Chorus/Vibrato (3 variants, identical parameters) ---
+            // Param order here is deliberately NOT ElevenHack's own field-declaration order (which
+            // puts the Mode toggle first) - it's reordered to match the real MIDI CC "Setting N"
+            // assignment confirmed in the official Eleven Rack User Guide, Chapter 9 ("as MOD":
+            // Chorus=CC61/Setting1, Rate=CC52/Setting2, Sync=CC53/Setting3, Depth=CC54/Setting4,
+            // the Chorus/Vibrato mode toggle=CC57/Setting5 - toggle LAST, not first). This order is
+            // what `EffectEditorComponent`'s positional Setting-N mapping depends on; the original
+            // ElevenHack-field order silently produced a wrong mapping (Mode toggle sent on Setting
+            // 1 instead of Setting 5) until this fix, caught before any hardware test of this slot.
             addGroup (all, { 11, 39, 40 }, "Chorus/Vibrato", {
-                bypass(), toggle ("Mode", "Chorus/Vibrato"), knob ("ChIn", "Chorus"),
-                knob ("VbDp", "Vibrato Depth"), knob ("VbRt", "Vibrato Rate"),
+                bypass(), knob ("ChIn", "Chorus"), knob ("VbRt", "Vibrato Rate"),
                 selector ("Sync", "Sync", {
                     { 0, "None" }, { 1, "Whole Note" }, { 2, "Whole dot" }, { 3, "Half Note" },
                     { 4, "Half dot" }, { 5, "Quarter Note" }, { 6, "Quarter dot" },
                     { 7, "Eighth Note" }, { 8, "Eighth dot" }, { 9, "Sixteenth Note" },
                     { 10, "Sixteenth dot" }, { 11, "Thirty-second Note" }, { 13, "Thirty-second dot" },
                 }),
+                knob ("VbDp", "Vibrato Depth"), toggle ("Mode", "Chorus/Vibrato"),
             });
 
             // --- Orange Phaser (2 variants, identical parameters) ---
             addGroup (all, { 34, 71 }, "Orange Phaser", { bypass(), knob ("Sped", "Rate"), toggle ("Sync", "Sync") });
+
+            // --- Vibe Phaser (2 variants, identical parameters) ---
+            // Previously name-only (ElevenHack itself never decoded real params for this one) -
+            // promoted to fully known using the official Eleven Rack User Guide, Chapter 9 ("as
+            // MOD": Volume=CC61/Setting1, Depth=CC52/Setting2, Rate=CC53/Setting3,
+            // Sync=CC54/Setting4, Chorus/Vibrato mode toggle=CC57/Setting5). The manual doesn't
+            // describe Sync's real type here (unlike Chorus/Vibrato's own Sync, which ElevenHack
+            // separately confirms is a note-duration selector) - modeled as a plain knob pending
+            // confirmation. Not yet hardware-tested.
+            addGroup (all, { 35, 46 }, "Vibe Phaser", {
+                bypass(), knob ("Volm", "Volume"), knob ("Dpth", "Depth"), knob ("Rate", "Rate"),
+                knob ("Sync", "Sync"), toggle ("Mode", "Chorus/Vibrato"),
+            });
 
             // --- Graphic EQ (2 variants, identical parameters) ---
             // Labels embed ElevenHack's documented real-world ranges (e.g. "-12 to +12" dB) as
@@ -187,14 +213,29 @@ namespace Rack::EffectDefinitions
                 knob ("Out ", "Output (-20 to +6)"),
             });
 
+            // --- Reverb (2 variants, different real parameter sets) ---
+            // Previously name-only (ElevenHack itself never decoded real params for either) -
+            // promoted to fully known using the official Eleven Rack User Guide, Chapter 9
+            // ("Blackpanel Spring Reverb": Bypass=36, Mix=18/Setting1, Decay=38/Setting2,
+            // Tone=40/Setting3; "Eleven SR" adds Pre-Delay=39/Setting4). Not yet hardware-tested.
+            addGroup (all, { 37, 47 }, "Spring_Reverb", {
+                bypass(), knob ("Mix ", "Mix"), knob ("Decy", "Decay"), knob ("Tone", "Tone"),
+            });
+            // Eleven SR also has a "Type" selector (CC 76/Setting5, ~25 named reverb types over
+            // uneven CC-value ranges per the manual) - deliberately NOT modeled here yet. The
+            // range-to-name mapping needs careful transcription (each option spans a different,
+            // non-uniform CC range) that's easy to get subtly wrong without a hardware check;
+            // better to omit it than encode a guessed mapping.
+            addGroup (all, { 51, 52, 53 }, "Stereo Reverb", {
+                bypass(), knob ("Mix ", "Mix"), knob ("Decy", "Decay"), knob ("Tone", "Tone"),
+                knob ("PreD", "Pre-Delay"),
+            });
+
             // --- Effect types ElevenHack only identified by name (real params not decoded) ---
             addNameOnlyGroup (all, { 16, 17, 56, 57, 73, 14, 15 }, "Fx Loop");
             addNameOnlyGroup (all, { 32 }, "Gray Compressor");
             addNameOnlyGroup (all, { 85, 86 }, "Dyn Compressor");
             addNameOnlyGroup (all, { 78, 79 }, "Para EQ");
-            addNameOnlyGroup (all, { 35, 46 }, "Vibe Phaser");
-            addNameOnlyGroup (all, { 37, 47 }, "Spring_Reverb");
-            addNameOnlyGroup (all, { 51, 52, 53 }, "Stereo Reverb");
             addNameOnlyGroup (all, { 27, 48 }, "BBDDelay");
             addNameOnlyGroup (all, { 28, 49 }, "Tape Delay");
             addNameOnlyGroup (all, { 80, 81, 82 }, "Dyn Delay");

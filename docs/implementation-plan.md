@@ -298,17 +298,39 @@ Nothing above is trusted until confirmed against the real unit:
           (Chorus/Vibrato's Mode toggle and Sync selector) — **an untested extension** of the
           knob-only hypothesis confirmed for Distortion, flagged as such in the UI's note text, not
           presented as confirmed.
-        - **Deliberately NOT built**: Reverb and Delay (every known variant of both is entirely
-          name-only in `EffectDefinitions` — ElevenHack never decoded a single real knob for
-          either), Amp tone knobs (only a model selector exists; no Gain/Bass/Mid/Treble/etc., even
-          though the CC chart implies 14 of them), and FX1/FX2 (`EffectDefinitions` doesn't record
-          which effect families a rig actually assigns to those flexible slots, so we don't know
-          which CC range would even apply to a given effect placed there). Building editors for any
-          of these would be non-functional UI with no way to verify it does anything real — revisit
-          once more reverse-engineering work (hardware capture + ElevenHack source, or a real Rig
-          Description decode for slot detection) fills these gaps in.
+        - **Deliberately NOT built (at the time)**: Reverb and Delay (every known variant of both
+          was entirely name-only in `EffectDefinitions` — ElevenHack never decoded a single real
+          knob for either), Amp tone knobs (only a model selector exists; no Gain/Bass/Mid/Treble/
+          etc., even though the CC chart implies 14 of them), and FX1/FX2 (`EffectDefinitions`
+          doesn't record which effect families a rig actually assigns to those flexible slots, so
+          we don't know which CC range would even apply to a given effect placed there).
         - **Not yet hardware-tested**: Wah and Mod are unverified against the real unit — only
           Distortion has been confirmed so far.
+      - **A second, more detailed manual revision found (2026-07-24)** — see
+        [protocol-spec.md](protocol-spec.md) "Second manual revision found" and
+        [eleven-rack-user-guide-chapter9-midi-cc-notes.md](samples/eleven-rack-user-guide-chapter9-midi-cc-notes.md)
+        — filled in real per-effect CC data ElevenHack never decoded, closing part of the Reverb
+        gap above, and caught two real bugs before any hardware test could:
+        - **Fixed**: Mod slot's Chorus/Vibrato had its Mode toggle in the wrong position (Setting 1
+          instead of Setting 5) and Distortion's Tri Knob Disto ("Tri-Knob Fuzz") had the wrong
+          knob order/labels (Sustain/Tone/Level instead of Volume/Sustain/Tone) — both corrected in
+          `EffectDefinitions.cpp`, neither had been hardware-tested yet so nothing user-visible had
+          shipped wrong, but both would have been wrong the first time someone tried them.
+        - **Added**: Vibe Phaser to the Mod slot's dropdown (previously name-only, now has real
+          manual-sourced params) and a new **Reverb** slot (Bypass/Mix/Decay/Tone, plus Pre-Delay
+          for Stereo Reverb) — both `EffectDefinitions`-entries and `EffectEditorComponent` support
+          updated together, same pattern as Distortion/Wah/Mod. Stereo Reverb's "Type" selector
+          (25 named reverb types over uneven CC ranges) is deliberately not included — the
+          range-to-name transcription wasn't confident enough to encode without a hardware check.
+        - **Still not built**: Delay (real per-knob data now exists in the manual, but its print
+          order doesn't match ascending Setting-N order the way every other category does, so the
+          true order needs more careful reconstruction before it's safe to implement) and Amp tone
+          knobs (blocked on a newly-found, bigger problem: the manual lists ~31 amp models against
+          our 16, needing reconciliation - possibly a hardware capture - before any amp knob editor
+          would be trustworthy). FX1/FX2 still blocked on the same slot-assignment-detection gap as
+          before. See protocol-spec.md Open Items for all of the above.
+        - Build-verified (compiles, all 52 test groups pass) but **not yet hardware-tested** — Wah,
+          Mod, and Reverb all still need a real hardware pass; only Distortion has one so far.
 - [ ] Live state sync: reflect hardware-originated changes (front-panel action) in the UI in real
       time — partially done already for the rig browser (current-rig highlight); still needed for
       per-parameter values once the editing screens exist
