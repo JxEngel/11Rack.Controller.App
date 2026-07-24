@@ -25,7 +25,28 @@ MainComponent::MainComponent()
     addAndMakeVisible (identityRequestButton);
     addAndMakeVisible (knownCommandSelector);
     addAndMakeVisible (sendKnownCommandButton);
+    addAndMakeVisible (rigBankLabel);
+    addAndMakeVisible (rigBankSelector);
+    addAndMakeVisible (rigNumberLabel);
+    addAndMakeVisible (rigNumberSelector);
+    addAndMakeVisible (selectRigButton);
     addAndMakeVisible (logBox);
+
+    // Bank 0-1, rig 0-103 (matches ElevenRack::MAX_RIG_BANK). Initial values reflect the last
+    // known current rig at time of writing (Bank 0, Rig 7 = "B4") so up/down by one is one click.
+    rigBankLabel.attachToComponent (&rigBankSelector, true);
+    rigBankSelector.setSliderStyle (juce::Slider::IncDecButtons);
+    rigBankSelector.setRange (0, 1, 1);
+    rigBankSelector.setValue (0, juce::dontSendNotification);
+    rigBankSelector.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 40, 24);
+
+    rigNumberLabel.attachToComponent (&rigNumberSelector, true);
+    rigNumberSelector.setSliderStyle (juce::Slider::IncDecButtons);
+    rigNumberSelector.setRange (0, 103, 1);
+    rigNumberSelector.setValue (7, juce::dontSendNotification);
+    rigNumberSelector.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 40, 24);
+
+    selectRigButton.onClick = [this] { sendSelectRig(); };
 
     logBox.setMultiLine (true);
     logBox.setReadOnly (true);
@@ -45,7 +66,7 @@ MainComponent::MainComponent()
 
     refreshDeviceLists();
 
-    setSize (700, 540);
+    setSize (700, 580);
 }
 
 MainComponent::~MainComponent()
@@ -86,6 +107,14 @@ void MainComponent::resized()
     auto commandRow = area.removeFromTop (30);
     sendKnownCommandButton.setBounds (commandRow.removeFromRight (180).reduced (2));
     knownCommandSelector.setBounds (commandRow.reduced (2));
+
+    area.removeFromTop (6);
+    auto rigSelectRow = area.removeFromTop (30);
+    selectRigButton.setBounds (rigSelectRow.removeFromRight (200).reduced (2));
+    rigSelectRow.removeFromLeft (50); // room for the auto-positioned "Bank" label
+    rigBankSelector.setBounds (rigSelectRow.removeFromLeft (80).reduced (2));
+    rigSelectRow.removeFromLeft (50); // room for the auto-positioned "Rig #" label
+    rigNumberSelector.setBounds (rigSelectRow.removeFromLeft (80).reduced (2));
 
     area.removeFromTop (6);
     logBox.setBounds (area);
@@ -173,6 +202,18 @@ void MainComponent::sendSelectedKnownCommand()
 
     const auto& command = knownCommands[(size_t) (id - 1)];
     sendSysEx (command.bytes, command.name);
+}
+
+void MainComponent::sendSelectRig()
+{
+    // SNDSET (0x00) + CMD_CURR_RIG_NUM (0x02): F0 13 0B 0F 00 02 <bank> <rig> F7
+    // This is the "select active rig" write - safe/reversible, equivalent to using the front-panel
+    // selector. It does NOT save/overwrite anything. See docs/protocol-spec.md.
+    auto bank = (uint8_t) (int) rigBankSelector.getValue();
+    auto rig  = (uint8_t) (int) rigNumberSelector.getValue();
+
+    sendSysEx ({ 0xF0, 0x13, 0x0B, 0x0F, 0x00, 0x02, bank, rig, 0xF7 },
+               "Select Rig (Bank " + juce::String (bank) + ", Rig " + juce::String (rig) + ")");
 }
 
 void MainComponent::sendSysEx (const std::vector<uint8_t>& bytes, const juce::String& description)

@@ -104,6 +104,13 @@ this should be a deliberate choice, not an automatic latest-tracking pin.
   guidance (JUCE intentionally provides no compile-time flag to disable Direct2D — it must be
   switched at runtime once a window peer exists). If you still see this after pulling the fix, it
   may be worth checking your GPU driver is current.
+- **Device shows fine in Device Manager but the app doesn't find/open it, especially after a crash
+  or forced-close** — confirmed (2026-07-24) that a **full reboot** resolves this. Consistent with
+  the app crash (from the Direct2D issue above) leaving a Windows-level MIDI handle stuck open,
+  which blocks a fresh instance from claiming the port even though the hardware itself is fine.
+  Try a reboot before assuming it's a hardware/driver problem. (Unplug/replug and killing a leftover
+  process in Task Manager are worth trying first, as cheaper options — not confirmed whether either
+  alone would have been enough.)
 
 ## Known limitation of this guide
 

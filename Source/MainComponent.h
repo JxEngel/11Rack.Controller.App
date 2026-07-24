@@ -34,6 +34,7 @@ private:
     void openSelectedOutput();
     void sendIdentityRequest();
     void sendSelectedKnownCommand();
+    void sendSelectRig();
     void sendSysEx (const std::vector<uint8_t>& bytes, const juce::String& description);
     void logMessage (const juce::String& message);
 
@@ -45,6 +46,16 @@ private:
     juce::TextButton identityRequestButton { "Send Identity Request" };
     juce::ComboBox knownCommandSelector;
     juce::TextButton sendKnownCommandButton { "Send Known Command" };
+
+    // The one WRITE command exposed so far - selecting the active rig is safe/reversible (it's
+    // exactly what the front-panel selector does, no stored data is overwritten). Deliberately
+    // separate from the read-only commands above. See docs/protocol-spec.md.
+    juce::Label rigBankLabel  { {}, "Bank" };
+    juce::Slider rigBankSelector;
+    juce::Label rigNumberLabel { {}, "Rig #" };
+    juce::Slider rigNumberSelector;
+    juce::TextButton selectRigButton { "Select Rig (writes to device)" };
+
     juce::TextEditor logBox;
 
     juce::Array<juce::MidiDeviceInfo> availableInputs;

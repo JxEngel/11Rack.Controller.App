@@ -88,12 +88,24 @@ Nothing above is trusted until confirmed against the real unit:
       addressing bytes only, not yet any Eleven-Rack-specific command.
 - [ ] Identify what the OS-enumerated 2 MIDI inputs / 3 MIDI outputs (all named "Eleven Rack")
       actually correspond to — which port is the control/SysEx port
-- [ ] Send known ElevenHack-derived messages (request effect count, request rig name, request
-      current rig number) and confirm replies match expected structure
-- [ ] Confirm the init/handshake sequence works end-to-end against current firmware
-- [ ] Confirm a full rig bulk-read round-trips correctly (read, re-encode, compare)
+- [x] Send known ElevenHack-derived messages and confirm replies match expected structure —
+      **Done (2026-07-24)**: effect count, main volume, current rig number, rig name, rig
+      description, effect description, and bulk rig all tested live and decoded. See
+      [protocol-spec.md](protocol-spec.md#hardware-validation-log) "second round" for full detail
+      and the new open items it raised (rig description tuple structure, effect-index-0 mystery).
+- [ ] Confirm the init/handshake sequence works end-to-end against current firmware — individual
+      commands from the sequence now validated in isolation, but the full sequence hasn't been run
+      end-to-end yet
+- [ ] Confirm a full rig bulk-read round-trips correctly (read, re-encode, compare) — have a real
+      bulk-read sample now ([docs/samples/bulk-rig-sample-2026-07-24.txt](samples/bulk-rig-sample-2026-07-24.txt)),
+      but haven't yet attempted re-encoding/writing it back
 - [ ] Verify checksum/CRC handling for bulk transfers (unresolved in ElevenHack itself)
-- [ ] Confirm write path: send a parameter change, verify the unit actually applies it
+- [x] Confirm write path: send a parameter change, verify the unit actually applies it —
+      **Confirmed (2026-07-24)**: the "Select Rig" control (`SNDSET CMD_CURR_RIG_NUM`,
+      `F0 13 0B 0F 00 02 <bank> <rig> F7`) successfully switched the unit's active rig, visible on
+      its own front-panel display — a real write, not just an accepted-looking reply. This is the
+      first confirmed write in either direction (SysEx or MIDI CC), and a major derisking point:
+      both read and write now work end-to-end against real hardware using ElevenHack-derived frames.
 
 ## Milestone 5 — Editor UI
 

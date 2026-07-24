@@ -185,6 +185,69 @@ port vs. others).
 generic Universal Identity Request, to validate the full command-specific frame format, not just
 the vendor/device ID bytes.
 
+**2026-07-24 — second round: all known-command queries tested against real hardware.** Every
+read-only command from the app's "known command" picker got a real, structured reply. All frames
+below start `F0 13 0B 0F`, so only the interesting part of each is shown. All numeric decodes were
+verified by re-implementing ElevenHack's exact algorithms in a throwaway Python script and
+cross-checking encode against decode, not by hand arithmetic.
+
+- **Request Effect Count** → reply `12 22 41 F7`. Message type `12`=RESPOND, command `22` echoes
+  `CMD_COUNT_EFFECT` ✓. Value = `0x41` = **65**. This confirms effect count means the total number
+  of distinct effect *algorithm models* across the whole device (Effect.java's per-model IDs go up
+  past 90), not the 16 effect-*type* categories in `ElevenRack.m_effectTypes`.
+- **Request Main Volume** → reply `12 36 00 3F 7F 7F 7F 0F F7`. Command `36` echoes
+  `CMD_MAIN_VOLUME` ✓. Value decodes to **127 (full/max)** via ElevenHack's 5-byte "encoded int"
+  scheme (`SysEx.extractFrom7bits` / `ParseUtils.coded7toSignedByte`). Verified by also running the
+  *encode* direction (`ParseUtils.byteToEncodedInt`) on `127`, which reproduces `3F 7F 7F 7F 0F`
+  byte-for-byte. Note: 127 hits a special-cased "full-scale" branch in the encoder, distinct from
+  its general linear formula for other values — worth remembering when decoding other knob values.
+- **Request Current Rig Number** → reply `12 02 00 07 F7`. Command `02` echoes `CMD_CURR_RIG_NUM`
+  ✓. Bank = 0, rig = 7 → per `ElevenRack.m_rigLocToName`, that's rig **"B4"**. **Confirmed exactly
+  correct**: the unit's own front-panel display was showing preset B4 at the time of capture. This
+  validates the command frame parsing, the param-extraction offsets, and the bank/rig numbering
+  scheme all at once — a strong, independent confirmation, not just an internally-consistent one.
+- **Request Rig Name (Bank 0, Rig 0 = "A1")** → reply `12 04 00 00 42 69 67 20 42 6C 75 65 00 F7`.
+  Command `04` echoes `CMD_RIG_GETNAME` ✓, bank=0, rig=0, name bytes decode as ASCII: **"Big
+  Blue"** — a real factory preset name. Confirms the string-extraction offset and format.
+- **Request Rig Description** → reply is 34 payload bytes, command `21` echoes `CMD_RIG_DESC` ✓ —
+  **this is genuinely new ground**: ElevenHack itself never decoded this structure (its handler is
+  just `Term.println("Got RESMOND RIGDESC")`, a stub). Working hypothesis from the raw bytes:
+  byte 0 = `0x0B` = **11** (a count), followed by **11 three-byte tuples**. One tuple's first byte,
+  `0x37`, exactly matches `Effect.WAH_BLACK` (55 decimal) — real evidence the tuple's first field is
+  a specific effect-instance ID. Not every tuple's bytes matched a constant we have on file, so
+  either the device has effect IDs ElevenHack never named, or the tuple layout needs refinement
+  with more samples (e.g. request rig descriptions for a couple of different known rigs and compare
+  which fields move). **Flagged open, not confirmed.**
+- **Request Effect Description (Effect 0)** → reply decodes to `strId = "DigiElvnELVu"`,
+  `name = "Eleven"`. Genuine surprise: effect index 0 in the ~65-entry enumeration is *not* an
+  Amp/Cab model as the `m_effectTypes` ordering might suggest — it looks like some kind of
+  placeholder/root/device-identity entry named after the product itself, not a real effect. Worth
+  keeping in mind before assuming "effect index" lines up with `m_effectTypes` position.
+- **Request Bulk Rig** → a real 1123-byte reply, arrived as **one single JUCE `MidiMessage`**, not
+  split into fragments. This answers an implementation question directly: **JUCE's MIDI input
+  already reassembles a multi-packet SysEx transfer into one complete message for us** — our own
+  interface layer doesn't need to implement the kind of manual partial-message buffering
+  `ElevenReceiver.java` does. All payload bytes stayed within 0x00-0x7F as expected for 7-bit-safe
+  SysEx data. Saved as a reference sample — see `docs/samples/bulk-rig-sample-2026-07-24.txt` — for
+  future decode work (e.g. diffing two bulk dumps after a single parameter change).
+
+**2026-07-24 — third round: first confirmed write.** Sent a `SNDSET CMD_CURR_RIG_NUM` frame
+(`F0 13 0B 0F 00 02 <bank> <rig> F7`) via the app's new "Select Rig" control, moving one rig up or
+down from the known B4 starting point. **The unit's own front-panel display switched rigs
+accordingly** — a real, visually-confirmed write, not just an accepted-looking SysEx reply. Exact
+target bank/rig used for this test not recorded - re-run and note the value if an exact before/after
+pair is needed later. This is a major milestone: both the read and write directions of the
+SysEx layer are now confirmed working end-to-end against real, current-firmware hardware, using
+frames derived entirely from 2013-era ElevenHack source. Meaningfully increases confidence that the
+rest of ElevenHack's command set (rig naming, bulk rig write, tuner, main volume set) will also
+still work, though each still needs its own direct confirmation before being trusted.
+
+### Open items from this round
+- [ ] Confirm which port of the 2 MIDI inputs / 3 MIDI outputs is "the" control port
+- [ ] Verify the Rig Description tuple-structure hypothesis with more samples
+- [ ] Figure out what effect index 0 ("Eleven"/"DigiElvnELVu") actually represents
+- [ ] Use the saved bulk-rig sample as a baseline for diffing future captures
+
 ## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
 
 See [project-overview.md](project-overview.md) "Prior Art Found" section for the full writeup.
