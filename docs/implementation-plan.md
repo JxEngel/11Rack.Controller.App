@@ -131,8 +131,7 @@ sequences already captured in [protocol-spec.md](protocol-spec.md) and
       (neither available in an automated run) — the 7 tests cover only the hardware-independent
       edge cases (invalid device identifiers, operations with nothing open, idempotent close).
       Real send/receive is verified by hand against the actual unit instead — see
-      [protocol-spec.md](protocol-spec.md)'s hardware validation log. Not yet run/verified in a
-      real build environment.
+      [protocol-spec.md](protocol-spec.md)'s hardware validation log. **Build-verified (2026-07-24)**.
 
 **Service layer**
 - [x] `RackController.{h,cpp}` + `RackControllerTests.cpp` — **done (2026-07-24)**: the facade the
@@ -160,7 +159,25 @@ sequences already captured in [protocol-spec.md](protocol-spec.md) and
       - Covers the SysEx-based write path (`selectRig`, `setMainVolume`, etc.) from the Milestone 0
         CC-chart research; MIDI CC sending for live single-parameter tweaks is not yet implemented
         here — still open
-      - Not yet run/verified in a real build environment
+      - **Build-verified (2026-07-24)**: all tests pass.
+
+**Integration**
+- [x] `MainComponent` refactored (2026-07-24) to use `RackController` instead of building raw
+      SysEx bytes itself: the "known command" picker now calls named `RackController` methods
+      directly, "Select Rig" calls `selectRig()`, and incoming messages are handled via
+      `RackController::Listener` overrides that log decoded, human-readable info (e.g. "Effect
+      Count: 65") instead of raw hex — raw hex is now only shown for `onUnhandledMessage` (anything
+      that isn't a recognized Eleven Rack frame, e.g. the Universal Identity Reply). Also added
+      `RackController::sendRaw()` as a narrow escape hatch for that one generic, non-Eleven-Rack
+      probe. Two small deliberate behavior changes from before: (1) changing either MIDI
+      input/output dropdown now reconnects both together (matches `RackController::connect()`'s
+      combined API) rather than being fully independent; (2) clicking "Refresh Devices" now
+      actually disconnects rather than just resetting the dropdown UI while leaving a stale
+      connection open. **Build-verified against real hardware (2026-07-24)**: every previously
+      confirmed decode reproduced identically through the real transport path, plus new findings —
+      see [protocol-spec.md](protocol-spec.md) "fourth round" for the Rig Description
+      tuple-hypothesis confirmation, the newly-discovered MIDI Bank Select CC0/CC32 messages
+      accompanying a rig select, and the unhandled async command `0x03` mystery.
 
 ## Milestone 4 — Hardware validation
 

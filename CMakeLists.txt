@@ -33,6 +33,11 @@ juce_generate_juce_header(ElevenRackController)
 target_sources(ElevenRackController PRIVATE
     Source/Main.cpp
     Source/MainComponent.cpp
+    Source/Rack/SysExFrame.cpp
+    Source/Rack/SevenBitCodec.cpp
+    Source/Rack/EffectDefinitions.cpp
+    Source/Rack/MidiTransport.cpp
+    Source/Rack/RackController.cpp
 )
 
 target_compile_definitions(ElevenRackController PRIVATE

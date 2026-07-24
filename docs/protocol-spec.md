@@ -244,9 +244,45 @@ still work, though each still needs its own direct confirmation before being tru
 
 ### Open items from this round
 - [ ] Confirm which port of the 2 MIDI inputs / 3 MIDI outputs is "the" control port
-- [ ] Verify the Rig Description tuple-structure hypothesis with more samples
+- [x] Verify the Rig Description tuple-structure hypothesis with more samples — see fourth round
+      below; confirmed.
 - [ ] Figure out what effect index 0 ("Eleven"/"DigiElvnELVu") actually represents
-- [ ] Use the saved bulk-rig sample as a baseline for diffing future captures
+- [x] Use the saved bulk-rig sample as a baseline for diffing future captures — done (see below).
+
+**2026-07-24 — fourth round: first real hardware run of the refactored `RackController`
+(not the friend-class test seam).** Every previously-confirmed decode reproduced identically
+through the real transport path (Effect Count 65, Main Volume 127, Rig Name "Big Blue", Effect
+Description "Eleven"/"DigiElvnELVu", Bulk Rig 977 decoded bytes) — good regression confirmation.
+Three new findings from this round:
+
+1. **Rig Description tuple hypothesis confirmed.** Captured a second Rig Description reply (after
+   re-selecting the same rig, Bank 0/Rig 7 = "B4") and diffed it byte-for-byte against the first
+   capture from the second round. Every single byte that changed was exactly the *middle* byte of
+   one of the 11 three-byte tuples hypothesized earlier — and every one of those 11 bytes shifted
+   by the exact same amount, `+14`. This strongly confirms the `[count byte] + 11 × (byte1, byte2,
+   byte3)` structure. **New mystery this raises**: the middle byte shifted even though the *same*
+   rig was reselected (not a different one) — suggesting it's not a stable per-slot identity tied
+   to rig content, but something more like a monotonically-incrementing counter assigned fresh on
+   each (re)load/select event. Needs more captures to pin down (e.g. query Rig Description twice
+   in a row with no rig-select in between, to see if it's stable absent an actual reselect).
+2. **Standard MIDI Bank Select CC messages appeared alongside the SysEx rig-select**, unprompted:
+   `B0 20 00` (CC32=0, Bank Select LSB) and `B0 00 00` (CC0=0, Bank Select MSB), both reporting
+   bank 0 - matching the bank we selected. These are *not* SysEx and weren't sent by us; the unit
+   emitted them on its own, as plain 3-byte MIDI Control Change messages, immediately after our
+   `SNDSET CMD_CURR_RIG_NUM` write. This is a genuinely new data point on the long-open "how does
+   rig switching really work" question (see Open Items below) — standard MIDI Bank Select is a
+   real, if partial, part of the picture, likely intended to keep external MIDI gear (foot
+   controllers, etc.) in sync with rig changes made through other means. Whether sending Bank
+   Select + Program Change ourselves would *also* successfully switch rigs (as an alternative to
+   the SysEx write) is untested.
+3. **An additional, unhandled `ASYNCSET` arrived alongside the expected `CMD_CURR_RIG_NUM`
+   confirmation**: `F0 13 0B 0F 02 03 07 00 F7` — message type `02` (ASYNCSET), command `03`
+   (`CMD_SAVE_RIG` in ElevenHack's naming), params `[07, 00]` (matching the rig/bank we selected).
+   `RackController` correctly routed this to `onUnhandledMessage` per its documented design (this
+   command is deliberately unhandled - see RackController.h). Whether `0x03` genuinely means "save"
+   in this async context, or means something more like "active rig slot changed" that ElevenHack's
+   naming doesn't quite capture, is unresolved — ElevenHack's own source doesn't handle this case
+   either, so this is new ground, not a gap in our port specifically.
 
 ## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
 
@@ -262,7 +298,16 @@ Summary retained here for quick reference:
 ## Open items
 
 - [ ] Verify the "CC Setting N → positional param order" hypothesis against real hardware
-- [ ] Resolve rig-switching mechanism (Program Change vs. CC vs. SysEx-only)
+- [ ] Resolve rig-switching mechanism (Program Change vs. CC vs. SysEx-only) — partially
+      illuminated: the unit emits standard MIDI Bank Select (CC0/CC32) alongside a SysEx rig-select
+      (see fourth round above), but whether Bank Select + Program Change alone can *drive* a rig
+      switch (as an alternative to the SysEx write) is still untested.
 - [ ] Resolve the CC119/"FX1 Setting 9" duplicate — likely a manual error, confirm against a second
       source or hardware behavior
 - [ ] Cabinet/mic-position mapping still not found in either source
+- [ ] Rig Description's per-tuple middle byte appears to be a monotonic counter assigned on each
+      rig (re)load, not a stable identity — confirm with repeated same-state queries (see fourth
+      round above)
+- [ ] Determine what the unhandled `ASYNCSET` command `0x03` (`CMD_SAVE_RIG`'s command byte, but in
+      an async context) actually represents — arrives alongside `CMD_CURR_RIG_NUM` after a rig
+      select; ElevenHack doesn't handle this case either

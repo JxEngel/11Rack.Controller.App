@@ -1,14 +1,18 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "Rack/MidiTransport.h"
+#include "Rack/RackController.h"
+
+#include <functional>
 #include <vector>
 
-// Starting skeleton: lists MIDI devices, connects to one, logs raw traffic in hex,
-// and can send a Universal SysEx Identity Request as a first connectivity test.
-// This is the seed of the Milestone 3 interface layer described in
-// docs/implementation-plan.md - not the final editor UI.
+// Starting skeleton: lists MIDI devices, connects via RackController, and exercises its API
+// (queries, the one validated write, and a generic raw-send escape hatch for diagnostics like the
+// Universal SysEx Identity Request). This is the seed of the eventual editor UI (Milestone 5),
+// not the UI itself - see docs/implementation-plan.md.
 class MainComponent : public juce::Component,
-                       private juce::MidiInputCallback
+                       private Rack::RackController::Listener
 {
 public:
     MainComponent();
@@ -19,33 +23,40 @@ public:
     void parentHierarchyChanged() override;
 
 private:
-    // A read-only (query-only) ElevenHack-derived SysEx message, for testing the reverse-engineered
-    // protocol against real hardware without risking a write to the unit. See docs/protocol-spec.md.
-    struct KnownCommand
+    // A named RackController action, for the "known command" picker - replaces the earlier
+    // approach of building raw SysEx bytes directly in this file (now RackController's job).
+    struct KnownAction
     {
         juce::String name;
-        std::vector<uint8_t> bytes;
+        std::function<void()> action;
     };
 
-    static std::vector<KnownCommand> makeKnownCommands();
+    std::vector<KnownAction> makeKnownActions();
 
     void refreshDeviceLists();
-    void openSelectedInput();
-    void openSelectedOutput();
+    void updateConnection();
     void sendIdentityRequest();
-    void sendSelectedKnownCommand();
+    void sendSelectedKnownAction();
     void sendSelectRig();
-    void sendSysEx (const std::vector<uint8_t>& bytes, const juce::String& description);
     void logMessage (const juce::String& message);
 
-    void handleIncomingMidiMessage (juce::MidiInput* source, const juce::MidiMessage& message) override;
+    // Rack::RackController::Listener
+    void onEffectCountReceived (int count) override;
+    void onMainVolumeReceived (int volume) override;
+    void onCurrentRigReceived (Rack::RackController::RigId rig) override;
+    void onRigNameReceived (Rack::RackController::RigId rig, const std::string& name) override;
+    void onEffectDescriptionReceived (int effectIndex, const std::string& strId, const std::string& name) override;
+    void onTunerStateReceived (bool isOn) override;
+    void onRigDescriptionReceived (const std::vector<uint8_t>& rawPayload) override;
+    void onBulkRigReceived (const std::vector<uint8_t>& decodedTfxBytes) override;
+    void onUnhandledMessage (const std::vector<uint8_t>& rawBytes) override;
 
     juce::ComboBox midiInputSelector;
     juce::ComboBox midiOutputSelector;
     juce::TextButton refreshButton         { "Refresh Devices" };
     juce::TextButton identityRequestButton { "Send Identity Request" };
-    juce::ComboBox knownCommandSelector;
-    juce::TextButton sendKnownCommandButton { "Send Known Command" };
+    juce::ComboBox knownActionSelector;
+    juce::TextButton sendKnownActionButton { "Send Known Command" };
 
     // The one WRITE command exposed so far - selecting the active rig is safe/reversible (it's
     // exactly what the front-panel selector does, no stored data is overwritten). Deliberately
@@ -58,12 +69,11 @@ private:
 
     juce::TextEditor logBox;
 
-    juce::Array<juce::MidiDeviceInfo> availableInputs;
-    juce::Array<juce::MidiDeviceInfo> availableOutputs;
-    std::vector<KnownCommand> knownCommands;
+    std::vector<Rack::MidiTransport::DeviceInfo> availableInputs;
+    std::vector<Rack::MidiTransport::DeviceInfo> availableOutputs;
+    std::vector<KnownAction> knownActions;
 
-    std::unique_ptr<juce::MidiInput> midiInput;
-    std::unique_ptr<juce::MidiOutput> midiOutput;
+    Rack::RackController controller;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

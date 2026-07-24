@@ -78,6 +78,11 @@ namespace Rack
         void requestEffectDescription (int effectIndex);
         void requestBulkRig();
 
+        // Escape hatch for generic/diagnostic messages that aren't Eleven-Rack-specific commands -
+        // e.g. a Universal MIDI Identity Request. Deliberately narrow: prefer a named method above
+        // for anything that's actually part of this protocol.
+        void sendRaw (const std::vector<uint8_t>& bytes);
+
         // --- Writes ---
         void selectRig (RigId rig); // Confirmed working against real hardware.
 

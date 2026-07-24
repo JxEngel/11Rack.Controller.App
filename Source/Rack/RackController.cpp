@@ -73,6 +73,11 @@ namespace Rack
         transport.send (SysExFrame::buildQuery (SysExFrame::Command::getBulkTfx));
     }
 
+    void RackController::sendRaw (const std::vector<uint8_t>& bytes)
+    {
+        transport.send (bytes);
+    }
+
     void RackController::selectRig (RigId rig)
     {
         transport.send (SysExFrame::buildSet (SysExFrame::Command::currRigNum, rig.bank, rig.rig));

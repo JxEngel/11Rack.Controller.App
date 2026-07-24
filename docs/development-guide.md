@@ -47,11 +47,12 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
 ## Running it
 
 - Status bar has a **Run** (▷) button, or Command Palette > **"CMake: Run Without Debugging"**.
-- What you'll see right now: a small MIDI utility, not the final editor. It lists available MIDI
-  input/output devices, lets you open one of each, logs all incoming MIDI traffic as hex, and has
-  a button to send a Universal SysEx Identity Request — a basic first connectivity test. This is
-  the seed of the interface layer described in
-  [implementation-plan.md](implementation-plan.md) Milestone 3, not the UI in Milestone 5.
+- What you'll see right now: a small MIDI test harness, not the final editor. It lists available
+  MIDI input/output devices, connects via `RackController` (the real service layer, not ad-hoc
+  code), and logs decoded/human-readable info for anything it recognizes ("Effect Count: 65",
+  "Rig Name (Bank 0, Rig 0): Big Blue") — raw hex only shows up for messages it doesn't recognize
+  yet, via `onUnhandledMessage`. This is still Milestone 3/4 territory (proving the plumbing works
+  against real hardware), not the actual editor UI in Milestone 5.
 
 ## Debugging
 
@@ -100,8 +101,10 @@ still don't see detail after pulling this fix, run the built `RackControllerTest
 directly from a terminal (bypassing `ctest` entirely) to rule out `ctest` itself swallowing output.
 
 **Current test coverage**: `SysExFrame` (frame envelope build/parse), `SevenBitCodec` (the 7-bit
-encoding schemes), and `EffectDefinitions` (the effect/parameter registry) — see
-[implementation-plan.md](implementation-plan.md) Milestone 3 for what's covered so far.
+encoding schemes), `EffectDefinitions` (the effect/parameter registry), `MidiTransport` (the JUCE
+MIDI I/O wrapper — hardware-independent edge cases only), and `RackController` (the service-layer
+facade — real parsing/dispatch verified against every reply captured from actual hardware this
+session) — see [implementation-plan.md](implementation-plan.md) Milestone 3 for what's covered so far.
 
 ## Testing against the actual hardware
 

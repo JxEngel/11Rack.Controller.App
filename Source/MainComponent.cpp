@@ -1,30 +1,37 @@
 #include "MainComponent.h"
 
-std::vector<MainComponent::KnownCommand> MainComponent::makeKnownCommands()
+using Rack::RackController;
+
+std::vector<MainComponent::KnownAction> MainComponent::makeKnownActions()
 {
-    // All REQU (0x01) query commands from ElevenHack's SysEx.java - read-only, safe to send.
-    // Frame: F0 13 0B 0F <msg-type> <command> [params...] F7. See docs/protocol-spec.md.
+    // Named RackController actions - replaces the earlier raw-SysEx-byte "known command" list
+    // now that RackController has a dedicated method for each of these. All read-only queries,
+    // confirmed working against real hardware - see docs/protocol-spec.md.
     return {
-        { "Request Effect Count",                  { 0xF0, 0x13, 0x0B, 0x0F, 0x01, 0x22, 0xF7 } },
-        { "Request Main Volume",                   { 0xF0, 0x13, 0x0B, 0x0F, 0x01, 0x36, 0x00, 0xF7 } },
-        { "Request Current Rig Number",             { 0xF0, 0x13, 0x0B, 0x0F, 0x01, 0x02, 0xF7 } },
-        { "Request Rig Name (Bank 0, Rig 0)",        { 0xF0, 0x13, 0x0B, 0x0F, 0x01, 0x04, 0x00, 0x00, 0xF7 } },
-        { "Request Rig Description",                { 0xF0, 0x13, 0x0B, 0x0F, 0x01, 0x21, 0xF7 } },
-        { "Request Effect Description (Effect 0)",   { 0xF0, 0x13, 0x0B, 0x0F, 0x01, 0x20, 0x00, 0xF7 } },
-        { "Request Bulk Rig (raw - may span multiple messages)", { 0xF0, 0x13, 0x0B, 0x0F, 0x01, 0x01, 0xF7 } },
+        { "Request Effect Count",                 [this] { controller.requestEffectCount(); } },
+        { "Request Main Volume",                  [this] { controller.requestMainVolume(); } },
+        { "Request Current Rig Number",           [this] { controller.requestCurrentRig(); } },
+        { "Request Rig Name (Bank 0, Rig 0)",     [this] { controller.requestRigName ({ 0, 0 }); } },
+        { "Request Rig Description",              [this] { controller.requestRigDescription(); } },
+        { "Request Effect Description (Effect 0)",[this] { controller.requestEffectDescription (0); } },
+        // Learned (2026-07-24) that this arrives as a single reassembled JUCE message, not
+        // multiple fragments - label updated accordingly. See docs/protocol-spec.md.
+        { "Request Bulk Rig",                     [this] { controller.requestBulkRig(); } },
     };
 }
 
 MainComponent::MainComponent()
 {
-    knownCommands = makeKnownCommands();
+    controller.addListener (this);
+
+    knownActions = makeKnownActions();
 
     addAndMakeVisible (midiInputSelector);
     addAndMakeVisible (midiOutputSelector);
     addAndMakeVisible (refreshButton);
     addAndMakeVisible (identityRequestButton);
-    addAndMakeVisible (knownCommandSelector);
-    addAndMakeVisible (sendKnownCommandButton);
+    addAndMakeVisible (knownActionSelector);
+    addAndMakeVisible (sendKnownActionButton);
     addAndMakeVisible (rigBankLabel);
     addAndMakeVisible (rigBankSelector);
     addAndMakeVisible (rigNumberLabel);
@@ -53,16 +60,16 @@ MainComponent::MainComponent()
     logBox.setScrollbarsShown (true);
     logBox.setCaretVisible (false);
 
-    for (int i = 0; i < (int) knownCommands.size(); ++i)
-        knownCommandSelector.addItem (knownCommands[(size_t) i].name, i + 1);
-    knownCommandSelector.setSelectedId (1, juce::dontSendNotification);
+    for (int i = 0; i < (int) knownActions.size(); ++i)
+        knownActionSelector.addItem (knownActions[(size_t) i].name, i + 1);
+    knownActionSelector.setSelectedId (1, juce::dontSendNotification);
 
     refreshButton.onClick = [this] { refreshDeviceLists(); };
     identityRequestButton.onClick = [this] { sendIdentityRequest(); };
-    sendKnownCommandButton.onClick = [this] { sendSelectedKnownCommand(); };
+    sendKnownActionButton.onClick = [this] { sendSelectedKnownAction(); };
 
-    midiInputSelector.onChange = [this] { openSelectedInput(); };
-    midiOutputSelector.onChange = [this] { openSelectedOutput(); };
+    midiInputSelector.onChange = [this] { updateConnection(); };
+    midiOutputSelector.onChange = [this] { updateConnection(); };
 
     refreshDeviceLists();
 
@@ -71,8 +78,7 @@ MainComponent::MainComponent()
 
 MainComponent::~MainComponent()
 {
-    if (midiInput != nullptr)
-        midiInput->stop();
+    controller.removeListener (this);
 }
 
 void MainComponent::paint (juce::Graphics& g)
@@ -105,8 +111,8 @@ void MainComponent::resized()
 
     area.removeFromTop (6);
     auto commandRow = area.removeFromTop (30);
-    sendKnownCommandButton.setBounds (commandRow.removeFromRight (180).reduced (2));
-    knownCommandSelector.setBounds (commandRow.reduced (2));
+    sendKnownActionButton.setBounds (commandRow.removeFromRight (180).reduced (2));
+    knownActionSelector.setBounds (commandRow.reduced (2));
 
     area.removeFromTop (6);
     auto rigSelectRow = area.removeFromTop (30);
@@ -122,118 +128,91 @@ void MainComponent::resized()
 
 void MainComponent::refreshDeviceLists()
 {
-    availableInputs = juce::MidiInput::getAvailableDevices();
-    availableOutputs = juce::MidiOutput::getAvailableDevices();
+    availableInputs = Rack::MidiTransport::getAvailableInputs();
+    availableOutputs = Rack::MidiTransport::getAvailableOutputs();
 
     midiInputSelector.clear (juce::dontSendNotification);
     midiInputSelector.addItem ("(no input)", 1);
-    for (int i = 0; i < availableInputs.size(); ++i)
-        midiInputSelector.addItem (availableInputs[i].name, i + 2);
+    for (int i = 0; i < (int) availableInputs.size(); ++i)
+        midiInputSelector.addItem (availableInputs[(size_t) i].name, i + 2);
 
     midiOutputSelector.clear (juce::dontSendNotification);
     midiOutputSelector.addItem ("(no output)", 1);
-    for (int i = 0; i < availableOutputs.size(); ++i)
-        midiOutputSelector.addItem (availableOutputs[i].name, i + 2);
+    for (int i = 0; i < (int) availableOutputs.size(); ++i)
+        midiOutputSelector.addItem (availableOutputs[(size_t) i].name, i + 2);
 
     midiInputSelector.setSelectedId (1, juce::dontSendNotification);
     midiOutputSelector.setSelectedId (1, juce::dontSendNotification);
+    controller.disconnect();
 
-    logMessage ("Found " + juce::String (availableInputs.size()) + " MIDI input(s), "
-                + juce::String (availableOutputs.size()) + " MIDI output(s).");
+    logMessage ("Found " + juce::String ((int) availableInputs.size()) + " MIDI input(s), "
+                + juce::String ((int) availableOutputs.size()) + " MIDI output(s).");
 }
 
-void MainComponent::openSelectedInput()
+void MainComponent::updateConnection()
 {
-    if (midiInput != nullptr)
-    {
-        midiInput->stop();
-        midiInput = nullptr;
-    }
+    // RackController::connect() takes both directions together, so changing either dropdown
+    // reconnects both - a small, deliberate simplification versus the two independent open/close
+    // paths this used to have. Harmless for a one-device test harness like this.
+    controller.disconnect();
 
-    auto id = midiInputSelector.getSelectedId();
-    if (id <= 1)
+    auto inputId = midiInputSelector.getSelectedId();
+    auto outputId = midiOutputSelector.getSelectedId();
+
+    juce::String inputIdentifier = (inputId > 1 && inputId - 2 < (int) availableInputs.size())
+                                        ? availableInputs[(size_t) (inputId - 2)].identifier
+                                        : juce::String();
+    juce::String outputIdentifier = (outputId > 1 && outputId - 2 < (int) availableOutputs.size())
+                                         ? availableOutputs[(size_t) (outputId - 2)].identifier
+                                         : juce::String();
+
+    if (inputIdentifier.isEmpty() && outputIdentifier.isEmpty())
         return;
 
-    auto device = availableInputs[id - 2];
-    midiInput = juce::MidiInput::openDevice (device.identifier, this);
-
-    if (midiInput != nullptr)
-    {
-        midiInput->start();
-        logMessage ("Opened MIDI input: " + device.name);
-    }
-    else
-    {
-        logMessage ("Failed to open MIDI input: " + device.name);
-    }
-}
-
-void MainComponent::openSelectedOutput()
-{
-    midiOutput = nullptr;
-
-    auto id = midiOutputSelector.getSelectedId();
-    if (id <= 1)
-        return;
-
-    auto device = availableOutputs[id - 2];
-    midiOutput = juce::MidiOutput::openDevice (device.identifier);
-
-    if (midiOutput != nullptr)
-        logMessage ("Opened MIDI output: " + device.name);
-    else
-        logMessage ("Failed to open MIDI output: " + device.name);
+    bool connected = controller.connect (inputIdentifier, outputIdentifier);
+    logMessage (connected ? juce::String ("Connected.") : juce::String ("Failed to connect - check the selected devices."));
 }
 
 void MainComponent::sendIdentityRequest()
 {
-    // Universal SysEx Identity Request: F0 7E <channel> 06 01 F7
-    sendSysEx ({ 0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7 }, "Universal SysEx Identity Request");
+    // Universal SysEx Identity Request: F0 7E <channel> 06 01 F7 - generic MIDI, not an
+    // Eleven-Rack-specific command, so this goes through RackController::sendRaw() rather than a
+    // named method. The unit's reply won't parse as an Eleven Rack frame (different vendor ID),
+    // so it'll show up via onUnhandledMessage's raw hex dump below.
+    std::vector<uint8_t> bytes { 0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7 };
+    logMessage ("Sent Universal SysEx Identity Request: " + juce::String::toHexString (bytes.data(), (int) bytes.size()));
+    controller.sendRaw (bytes);
 }
 
-void MainComponent::sendSelectedKnownCommand()
+void MainComponent::sendSelectedKnownAction()
 {
-    auto id = knownCommandSelector.getSelectedId();
-    if (id < 1 || id > (int) knownCommands.size())
+    auto id = knownActionSelector.getSelectedId();
+    if (id < 1 || id > (int) knownActions.size())
     {
         logMessage ("No known command selected.");
         return;
     }
 
-    const auto& command = knownCommands[(size_t) (id - 1)];
-    sendSysEx (command.bytes, command.name);
+    const auto& known = knownActions[(size_t) (id - 1)];
+    logMessage ("Sent: " + known.name);
+    known.action();
 }
 
 void MainComponent::sendSelectRig()
 {
-    // SNDSET (0x00) + CMD_CURR_RIG_NUM (0x02): F0 13 0B 0F 00 02 <bank> <rig> F7
-    // This is the "select active rig" write - safe/reversible, equivalent to using the front-panel
-    // selector. It does NOT save/overwrite anything. See docs/protocol-spec.md.
+    // Confirmed working against real hardware - see docs/protocol-spec.md.
     auto bank = (uint8_t) (int) rigBankSelector.getValue();
     auto rig  = (uint8_t) (int) rigNumberSelector.getValue();
 
-    sendSysEx ({ 0xF0, 0x13, 0x0B, 0x0F, 0x00, 0x02, bank, rig, 0xF7 },
-               "Select Rig (Bank " + juce::String (bank) + ", Rig " + juce::String (rig) + ")");
-}
-
-void MainComponent::sendSysEx (const std::vector<uint8_t>& bytes, const juce::String& description)
-{
-    if (midiOutput == nullptr)
-    {
-        logMessage ("No MIDI output open - select one first.");
-        return;
-    }
-
-    midiOutput->sendMessageNow (juce::MidiMessage (bytes.data(), (int) bytes.size()));
-    logMessage ("Sent " + description + ": "
-                + juce::String::toHexString (bytes.data(), (int) bytes.size()));
+    logMessage ("Sent: Select Rig (Bank " + juce::String (bank) + ", Rig " + juce::String (rig) + ")");
+    controller.selectRig ({ bank, rig });
 }
 
 void MainComponent::logMessage (const juce::String& message)
 {
-    // May be called from the MIDI input's own thread (handleIncomingMidiMessage) as well as the
-    // message thread - hop to the message thread before touching the TextEditor, and use a
-    // SafePointer in case the component is destroyed while a hop is still in flight.
+    // RackController::Listener callbacks already arrive on the message thread (MidiTransport hops
+    // there before calling back), but this is also called directly from button click handlers, so
+    // keep the SafePointer + callAsync pattern for uniform safety regardless of caller.
     juce::Component::SafePointer<MainComponent> safeThis (this);
     juce::MessageManager::callAsync ([safeThis, message]
     {
@@ -245,9 +224,52 @@ void MainComponent::logMessage (const juce::String& message)
     });
 }
 
-void MainComponent::handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessage& message)
+void MainComponent::onEffectCountReceived (int count)
 {
-    logMessage ("IN [" + juce::String (message.getRawDataSize()) + " bytes]: "
-                + juce::String::toHexString (message.getRawData(), message.getRawDataSize())
-                + "  (" + message.getDescription() + ")");
+    logMessage ("Effect Count: " + juce::String (count));
+}
+
+void MainComponent::onMainVolumeReceived (int volume)
+{
+    logMessage ("Main Volume: " + juce::String (volume));
+}
+
+void MainComponent::onCurrentRigReceived (RackController::RigId rig)
+{
+    logMessage ("Current Rig: Bank " + juce::String (rig.bank) + ", Rig " + juce::String (rig.rig));
+}
+
+void MainComponent::onRigNameReceived (RackController::RigId rig, const std::string& name)
+{
+    logMessage ("Rig Name (Bank " + juce::String (rig.bank) + ", Rig " + juce::String (rig.rig)
+                + "): " + juce::String (name));
+}
+
+void MainComponent::onEffectDescriptionReceived (int effectIndex, const std::string& strId, const std::string& name)
+{
+    logMessage ("Effect Description #" + juce::String (effectIndex) + ": strId=" + juce::String (strId)
+                + " name=" + juce::String (name));
+}
+
+void MainComponent::onTunerStateReceived (bool isOn)
+{
+    logMessage (juce::String ("Tuner: ") + (isOn ? "On" : "Off"));
+}
+
+void MainComponent::onRigDescriptionReceived (const std::vector<uint8_t>& rawPayload)
+{
+    logMessage ("Rig Description [" + juce::String ((int) rawPayload.size()) + " bytes, structure not yet decoded]: "
+                + juce::String::toHexString (rawPayload.data(), (int) rawPayload.size()));
+}
+
+void MainComponent::onBulkRigReceived (const std::vector<uint8_t>& decodedTfxBytes)
+{
+    logMessage ("Bulk Rig: " + juce::String ((int) decodedTfxBytes.size())
+                + " decoded bytes (not yet parsed as .tfx - see docs/implementation-plan.md)");
+}
+
+void MainComponent::onUnhandledMessage (const std::vector<uint8_t>& rawBytes)
+{
+    logMessage ("UNHANDLED [" + juce::String ((int) rawBytes.size()) + " bytes]: "
+                + juce::String::toHexString (rawBytes.data(), (int) rawBytes.size()));
 }
