@@ -6,6 +6,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# include(CTest) (rather than the more minimal enable_testing()) also generates
+# DartConfiguration.tcl, which some CTest tooling expects to see even though nothing here uses
+# CDash - avoids a harmless but confusing "Cannot find file" warning when running tests.
+include(CTest)
+
 # JUCE is fetched automatically at configure time - no manual install/submodule needed.
 # Check https://github.com/juce-framework/JUCE/releases before bumping this tag.
 include(FetchContent)
@@ -45,3 +50,30 @@ target_link_libraries(ElevenRackController PRIVATE
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags
 )
+
+# Unit tests for the Rack/ codec and service layer (see docs/implementation-plan.md Milestone 3).
+# Kept as a separate console app target, run via CTest - see docs/development-guide.md "Running Tests".
+juce_add_console_app(RackControllerTests
+    PRODUCT_NAME "Rack Controller Tests"
+)
+
+juce_generate_juce_header(RackControllerTests)
+
+target_sources(RackControllerTests PRIVATE
+    Tests/TestMain.cpp
+    Source/Rack/SysExFrame.cpp
+    Source/Rack/SysExFrameTests.cpp
+    Source/Rack/SevenBitCodec.cpp
+    Source/Rack/SevenBitCodecTests.cpp
+    Source/Rack/EffectDefinitions.cpp
+    Source/Rack/EffectDefinitionsTests.cpp
+)
+
+target_link_libraries(RackControllerTests PRIVATE
+    juce::juce_core
+    juce::juce_audio_basics
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_warning_flags
+)
+
+add_test(NAME RackControllerTests COMMAND RackControllerTests)

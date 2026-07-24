@@ -34,9 +34,9 @@ just the checklist, kept in sync as we go. Check items off as they're actually d
 - [x] Full command ID list (bulk tfx get/set, rig number, save rig, rig name get/set, effect
       description, rig description, effect count, main volume, tuner)
 - [x] Official MIDI CC table (real-time control) — separate from the SysEx bulk-transfer path
-- [ ] 7-bit data encoding/decoding scheme for bulk payloads — written up in prose in
-      project-overview.md; still needs a precise worked example (encode/decode a sample byte
-      sequence by hand) before treating it as fully understood
+- [x] 7-bit data encoding/decoding scheme for bulk payloads — **done (2026-07-24)**: verified
+      numerically (not by hand) against the real captured bulk-rig payload, exact round-trip match.
+      See `Source/Rack/SevenBitCodec.{h,cpp}` under Milestone 3 for the ported, tested code.
 - [ ] Device init/handshake sequence — documented in project-overview.md, not yet copied into
       protocol-spec.md's structured format
 - [ ] Full effect/parameter table (every effect type's knobs/switches/selectors, ranges, and value
@@ -67,17 +67,73 @@ just the checklist, kept in sync as we go. Check items off as they're actually d
 
 ## Milestone 3 — Interface/protocol layer (C++ port)
 
-Porting the three ElevenHack pieces identified as directly relevant:
+Structured as three sub-layers, not one class — see the architecture discussion in
+[project-overview.md](project-overview.md) (codec → transport → service). Every source file below
+gets its matching test file created in the same change, not added afterward — see
+[development-guide.md](development-guide.md) "Running Tests" for how to run them, and the
+`RackControllerTests`/CTest infrastructure (already scaffolded, 2026-07-24) for how they're wired up.
 
-- [ ] `SysExMessage` builder/parser (from `SysEx.java`) — frame construction, 7-bit encode/decode
-- [ ] Effect/parameter registry (from `Effect.mBuildEffect()`'s per-effect-type definitions) — a
-      strongly-typed C++ model, not a Java port line-by-line
-- [ ] Listener/dispatcher for `ASYNCSET` vs `RESPOND` messages (from `ElevenReceiver.parseMessage()`)
-      — the "listen for hardware-originated changes" half of the API
-- [ ] Transmitter methods (from `ElevenTransmitter`) — the "send updated values" half
+**Test infrastructure**
+- [x] `RackControllerTests` console app target + CTest wiring — **done (2026-07-24)**, using
+      JUCE's built-in `juce::UnitTest`/`UnitTestRunner` (no extra test framework dependency). The
+      placeholder smoke test has been removed now that real tests exist below.
+- [x] Developer documentation for running tests — **done (2026-07-24)**, see
+      [development-guide.md](development-guide.md) "Running Tests".
+
+**Codec layer** (pure byte-level logic — no MIDI I/O, no UI; unit-testable against the byte
+sequences already captured in [protocol-spec.md](protocol-spec.md) and
+[samples/](samples/bulk-rig-sample-2026-07-24.txt))
+- [x] `SysExFrame.{h,cpp}` + `SysExFrameTests.cpp` — **done (2026-07-24)**: frame build/parse
+      (from `SysEx.java`) — vendor/device/model IDs, message type, command byte, param extraction,
+      `extractString`. 9 tests, all built directly from real hardware-captured byte sequences
+      (Effect Count, Main Volume, Rig Name, the confirmed B4 rig-number reply, the confirmed
+      Select-Rig write, plus malformed-frame rejection cases). **Build-verified (2026-07-24)**: all
+      9 pass in a real build via `RackControllerTests`/CTest.
+- [x] `SevenBitCodec.{h,cpp}` + `SevenBitCodecTests.cpp` — **done (2026-07-24)**: the 5-byte
+      encoded-int scheme (verified against the real Main Volume=127 round-trip) and the general
+      7-bit pack/unpack (from `ParseUtils`/`SysEx.extractFrom7bits`/`encodeTo7bits`). Both were
+      verified numerically in Python *before* porting to C++, including a full exact-byte-match
+      round-trip against the real captured bulk-rig payload — decoding it, dropping the last byte,
+      and re-encoding reproduces the original captured wire bytes exactly. Discovered and documented
+      a real subtlety: `decodeFrom7Bits` always returns exactly one more byte than the true data
+      length (a deterministic "remainder" from the bit-packing tail) — something else (the `.tfx`
+      structure) has to know the true length. **Build-verified (2026-07-24)**: all 5 pass.
+- [x] `EffectDefinitions.{h,cpp}` + `EffectDefinitionsTests.cpp` — **done (2026-07-24)**: full
+      effect/parameter registry ported from `Effect.mBuildEffect()`/`EffectAmpCab.java` — 52
+      specific effect-instance IDs across ~20 effect families, plus the 16 known Amp/Cab models and
+      the `EffectClass` (16-slot signal-chain category) enum. Not a line-by-line Java port — a
+      strongly-typed data model (`EffectDefinition`/`ParamDefinition`/`SelectOption`). 8 tests,
+      including a direct tie to real hardware data: `WAH_BLACK` (effect ID 55 = `0x37`) is the one
+      effect ID confirmed to appear in the captured Rig Description reply. Known gaps, faithfully
+      carried over from ElevenHack itself rather than invented by this port:
+      - Many effect families (Fx Loop, Compressors, Para EQ, Vibe Phaser, Spring/Stereo Reverb,
+        BBD/Tape/Dyn Delay, Multi Chorus, Flanger, Roto Speaker) were only ever identified by name
+        in ElevenHack — their real per-knob parameters were never decoded. Marked
+        `isFullyKnown = false` rather than silently presented as "no parameters."
+      - Amp/Cab's display name is dynamic in ElevenHack (depends on the currently selected amp
+        model) — represented here with a generic "Amp/Cab" placeholder name instead.
+      - The large-32-bit-value alternate encoding of the Amp/Cab selector (seen alongside the small
+        0-15 index in ElevenHack's source) is not modeled — needs a real hardware capture of an
+        Amp/Cab parameter value to know which representation actually appears on the wire.
+      **Build-verified (2026-07-24)**: 1 of 8 tests initially failed on a param-count assertion —
+      turned out to be a miscount in the *test* itself (expected 16, should've been 17: Bypass +
+      `mCreateRigParams()`'s 16 items), not a bug in the ported data. Fixed; all 8 pass now.
+- [ ] `.tfx` file format parser/writer (from `tfx/TfxParser.java`) + tests, for import/export
+      compatibility — lower priority than the live-protocol pieces above
+
+**Transport layer**
+- [ ] `MidiTransport.{h,cpp}` — thin wrapper around `juce::MidiInput`/`MidiOutput`; the only place
+      that touches JUCE's MIDI API directly. Likely hard to unit-test meaningfully without real
+      hardware or a fake transport — note as a known gap rather than skipping silently if so.
+
+**Service layer**
+- [ ] `RackController.{h,cpp}` + `RackControllerTests.cpp` — the facade the UI will call
+      (`selectRig(bank, rig)`, `requestCurrentRig()`, `getEffectCount()`, a `Listener` interface for
+      hardware-originated changes) — owns a `MidiTransport`, uses the codec classes internally,
+      mirrors the `ASYNCSET`/`RESPOND` dispatch from `ElevenReceiver.parseMessage()` but exposes
+      clean callbacks instead of raw bytes
 - [ ] **Both write paths needed (resolved by Milestone 0 CC-chart research)**: a MIDI CC sender for
       live single-parameter tweaks, and a bulk SysEx rig writer for save/load — not an either/or
-- [ ] `.tfx` file format parser/writer (from `tfx/TfxParser.java`) for import/export compatibility
 
 ## Milestone 4 — Hardware validation
 
