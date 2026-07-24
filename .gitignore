@@ -1,0 +1,23 @@
+# Build output (includes the JUCE FetchContent checkout under build/_deps)
+/build/
+/out/
+/cmake-build-*/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+
+# Visual Studio / MSVC
+.vs/
+*.vcxproj*
+*.sln
+*.ilk
+*.pdb
+
+# VS Code local logs (keep the shared config files: settings/launch/extensions)
+.vscode/*.log
+
+# OS
+Thumbs.db
+.DS_Store
