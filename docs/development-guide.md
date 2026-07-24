@@ -48,11 +48,12 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
 
 - Status bar has a **Run** (▷) button, or Command Palette > **"CMake: Run Without Debugging"**.
 - The window has MIDI input/output device pickers and a Refresh button at the top (shared across
-  everything below), and two tabs:
+  everything below), and four tabs:
   - **Diagnostics** — the original protocol test harness: a known-command picker, the one
     validated write (Select Rig), a raw-send button for generic diagnostics (Universal SysEx
-    Identity Request), and a log of decoded, human-readable info for anything `RackController`
-    recognizes ("Effect Count: 65") — raw hex only for messages it doesn't recognize yet.
+    Identity Request), a MIDI CC test tool, an Effect Index spinner + Request Effect Description
+    button, and a log of decoded, human-readable info for anything `RackController` recognizes
+    ("Effect Count: 65") — raw hex only for messages it doesn't recognize yet.
   - **Rig Browser** — the first real piece of the actual editor UI (Milestone 5): click "Refresh
     Rig List" to fetch all 208 rig names from the device (one at a time — takes a little while),
     see them listed with their "A1"–"Z4" location labels, and double-click one to load it.
@@ -60,7 +61,16 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
     First hardware test of `setMainVolume()`/`setTunerOn()`. The Tuner status label only updates
     from a real device-confirmed reply — there's no query for tuner state, so it won't show
     anything until you either click a button here or engage the tuner on the unit itself.
-  All three tabs share the same `RackController`/connection — connect once at the top, use any tab.
+  - **Effect Editor** — live per-effect parameter editing over MIDI CC, driven by
+    `EffectDefinitions`. A **Slot** picker (Distortion / Wah / Mod) followed by an **Effect**
+    picker scoped to whichever models actually have real decoded parameters for that slot, then
+    a Bypass toggle and one control per knob/switch/selector, sent live as you move them. No live
+    readback (MIDI CC has no query mechanism) and no auto-detection of what's actually loaded in
+    the unit — you tell it via the dropdowns. Deliberately doesn't cover every slot; see
+    [implementation-plan.md](implementation-plan.md) Milestone 5 for exactly what's covered and
+    why (Reverb, Delay, Amp tone knobs, and FX1/FX2 are all currently missing real parameter data
+    to build a meaningful editor from).
+  All four tabs share the same `RackController`/connection — connect once at the top, use any tab.
 
 ## Debugging
 

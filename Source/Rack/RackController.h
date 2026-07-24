@@ -115,6 +115,15 @@ namespace Rack
         void setMainVolume (int8_t volume);
         void setTunerOn (bool isOn); // Confirmed working against real hardware (2026-07-24).
 
+        // Plain 3-byte MIDI Control Change on channel 1: the live-tweak mechanism for per-effect
+        // parameters (as opposed to the SysEx writes above, which are for whole-rig save/load, not
+        // real-time knob turns) - confirmed working against real hardware (2026-07-24): CC 27
+        // ("Distortion Setting 1") moved the Overdrive knob of a loaded "Green JRC Disto" exactly
+        // as the CC chart's positional "Setting N" hypothesis predicted. See docs/protocol-spec.md
+        // "sixth"/"seventh" rounds. No query mechanism exists for CC-controlled values - there is
+        // no way to read back a parameter's current value this way, only to set it.
+        void sendMidiCc (uint8_t ccNumber, uint8_t value);
+
         // NOT YET HARDWARE-VALIDATED - ported from ElevenHack's ElevenTransmitter for API
         // completeness only. `saveRig` in particular overwrites stored rig data. Do not wire any
         // of these up to a UI control without a deliberate, separate decision to test them first.

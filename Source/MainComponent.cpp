@@ -18,6 +18,7 @@ MainComponent::MainComponent()
     tabs.addTab ("Diagnostics", juce::Colours::transparentBlack, &diagnosticsComponent, false);
     tabs.addTab ("Rig Browser", juce::Colours::transparentBlack, &rigBrowserComponent, false);
     tabs.addTab ("Globals", juce::Colours::transparentBlack, &rigGlobalsComponent, false);
+    tabs.addTab ("Effect Editor", juce::Colours::transparentBlack, &effectEditorComponent, false);
 
     refreshDeviceLists();
 

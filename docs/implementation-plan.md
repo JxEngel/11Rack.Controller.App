@@ -17,8 +17,21 @@ just the checklist, kept in sync as we go. Check items off as they're actually d
       [protocol-spec.md](protocol-spec.md#hardware-validation-log).
 - [ ] Determine cabinet/mic-position parameter mapping — not found in ElevenHack's `EffectAmpCab`,
       and not in the official CC chart either (Amp Setting 1-14 covers the amp side only).
-- [ ] Verify the "CC 'Setting N' maps positionally to ElevenHack's per-effect knob-add order"
-      hypothesis against real hardware (see protocol-spec.md Open Items).
+- [x] Verify the "CC 'Setting N' maps positionally to ElevenHack's per-effect knob-add order"
+      hypothesis against real hardware (see protocol-spec.md Open Items). **Test tool added
+      (2026-07-24)**: a "MIDI CC (test)" section on the Diagnostics tab (CC# + Value spinners, Send
+      button) sends a raw 3-byte Control Change via `RackController::sendRaw()`.
+      - **First test confirmed (2026-07-24)**: CC 69 (Tuner On/Off) = 127 actually engaged the
+        real unit's tuner — MIDI CC is a genuine, working live-control mechanism, not just
+        documentation. Also surfaced that `CMD_TUNER_A` (`0x41`) is a real paired `ASYNCSET`
+        alongside `CMD_TUNER`, not unused as assumed — see
+        [protocol-spec.md](protocol-spec.md) "sixth round".
+      - **Positional hypothesis confirmed (2026-07-24)**: with "Green JRC Disto" loaded (knob order
+        `Driv`/"Overdrive", `Tone`, `Levl`), CC 27 ("Distortion Setting 1") controlled the Overdrive
+        knob specifically — exactly the first knob in `EffectDefinitions`' order for that effect.
+        See [protocol-spec.md](protocol-spec.md) "seventh round". This validates the core mechanism
+        the entire per-effect parameter editing UI (Milestone 5) will depend on. "Setting 2"/
+        "Setting 3" → 2nd/3rd knob not yet independently confirmed, only "Setting 1" tested so far.
 - [ ] Resolve how rig switching works during play — Program Change, a specific CC, or SysEx-only
       (`CMD_CURR_RIG_NUM`). The manual's CC chapter never mentions Program Change; forum threads
       discuss MIDI rig-switching, so this needs direct hardware testing, not just reading.
@@ -107,7 +120,7 @@ sequences already captured in [protocol-spec.md](protocol-spec.md) and
         both the special-case check and the general formula (not a naive 8-bit shift, which
         silently mishandles negative input differently). 4 new tests added for negative-value
         encode/decode, including a clean exact round-trip case and confirming the special case
-        doesn't misfire for negative input.
+        doesn't misfire for negative input. **Build-verified (2026-07-24)**: all pass.
 - [x] `EffectDefinitions.{h,cpp}` + `EffectDefinitionsTests.cpp` — **done (2026-07-24)**: full
       effect/parameter registry ported from `Effect.mBuildEffect()`/`EffectAmpCab.java` — 52
       specific effect-instance IDs across ~20 effect families, plus the 16 known Amp/Cab models and
@@ -248,8 +261,54 @@ Nothing above is trusted until confirmed against the real unit:
         hardware, same as the app always has been.
       - **Build-verified against real hardware (2026-07-24)**: rig list populated correctly, and
         double-clicking a rig successfully loaded it onto the unit.
-- [ ] Per-effect parameter editing screens (knobs/selectors/switches) driven by
-      `EffectDefinitions` (Milestone 3)
+- [x] Per-effect parameter editing screens (knobs/selectors/switches) driven by
+      `EffectDefinitions` (Milestone 3) — **first slice added (2026-07-24)**:
+      `EffectEditorComponent` ("Effect Editor" tab), scoped to the **Distortion slot only** at
+      first — proves the mechanism confirmed in "seventh round" ([protocol-spec.md](protocol-spec.md))
+      actually works as a live editor, not just a one-off test.
+      - Pick which of the 5 known Distortion models is loaded, from a dropdown (defaults to
+        "Green JRC Disto", matching the hardware test) — then a Bypass toggle (CC 25) and a slider
+        per knob, positionally mapped to CC 27/78/79/80/81/82/83 ("Distortion Setting 1-7") per the
+        confirmed hypothesis
+      - New `RackController::sendMidiCc(ccNumber, value)` — a proper named method for the
+        now-confirmed-real CC live-tweak mechanism, replacing the diagnostic-only `sendRaw` hack for
+        this purpose. **Not unit-tested** (a deliberate, documented choice, not an oversight): the
+        method is a trivial 3-byte construction with no way to observe outgoing bytes without new
+        mock infrastructure, and it's already proven correct against real hardware twice (CC 69,
+        CC 27) — stronger evidence than a synthetic test would give.
+      - **Two real, deliberate limitations, not accidental gaps**: (1) no way to auto-detect which
+        effect is actually loaded — that depends on the still-unresolved Rig Description structure,
+        so you tell it yourself via the dropdown; (2) no live readback — CC has no query mechanism,
+        so sliders reflect only what you've set from this screen, not the unit's true current state,
+        until you move them.
+      - **Build-verified against real hardware (2026-07-24)**: Bypass and all three knobs
+        (Overdrive/Tone/Level) confirmed working correctly. This also fully closes out the "Setting
+        2/3 map to the 2nd/3rd knob" open item from [protocol-spec.md](protocol-spec.md) — all
+        three positions on the same effect landed exactly where the hypothesis predicted.
+      - **Extended to a "Slot" picker with Wah and Mod (2026-07-24)** — but NOT uniformly to every
+        slot, after checking exactly which effect families have real per-knob data in
+        `EffectDefinitions` vs. name-only stubs:
+        - **Wah** — one confirmed knob only (Position, "Wah Pedal" = CC 4) + Bypass (CC 43). The
+          chart has no "Setting N" scheme for Wah at all (unlike every other slot), and the second
+          knob (VxCr) has no known CC, so it's intentionally omitted rather than guessed.
+        - **Mod** — limited to the two Mod-slot effects with real decoded parameters,
+          Chorus/Vibrato and Orange Phaser; the others this slot can hold (Vibe Phaser, Multi
+          Chorus, Flanger, Roto Speaker) are name-only in `EffectDefinitions` and are omitted. This
+          is also the first time the positional "Setting N" mapping is applied to non-knob params
+          (Chorus/Vibrato's Mode toggle and Sync selector) — **an untested extension** of the
+          knob-only hypothesis confirmed for Distortion, flagged as such in the UI's note text, not
+          presented as confirmed.
+        - **Deliberately NOT built**: Reverb and Delay (every known variant of both is entirely
+          name-only in `EffectDefinitions` — ElevenHack never decoded a single real knob for
+          either), Amp tone knobs (only a model selector exists; no Gain/Bass/Mid/Treble/etc., even
+          though the CC chart implies 14 of them), and FX1/FX2 (`EffectDefinitions` doesn't record
+          which effect families a rig actually assigns to those flexible slots, so we don't know
+          which CC range would even apply to a given effect placed there). Building editors for any
+          of these would be non-functional UI with no way to verify it does anything real — revisit
+          once more reverse-engineering work (hardware capture + ElevenHack source, or a real Rig
+          Description decode for slot detection) fills these gaps in.
+        - **Not yet hardware-tested**: Wah and Mod are unverified against the real unit — only
+          Distortion has been confirmed so far.
 - [ ] Live state sync: reflect hardware-originated changes (front-panel action) in the UI in real
       time — partially done already for the rig browser (current-rig highlight); still needed for
       per-parameter values once the editing screens exist
@@ -270,8 +329,8 @@ Nothing above is trusted until confirmed against the real unit:
         the real range unreachable. Fixed (see `SevenBitCodec.{h,cpp}` above and
         [protocol-spec.md](protocol-spec.md) "fifth round"); the slider now shows the unit's real
         0.0-10.0 scale directly, converting to/from the raw signed wire value internally. Confirmed
-        against real hardware at two points (raw 0 = "5.0", raw 127 = "10.0"); the negative end
-        (raw -127 = "0.0"?) is not yet independently confirmed.
+        against real hardware at all three key points: raw 0 = "5.0" (center), raw 127 = "10.0"
+        (max), and raw -127 = "0.0" (min) — **confirmed (2026-07-24)**.
       - Tuner has no state query in the protocol, so its status label only ever reflects a real
         device-confirmed `onTunerStateReceived` callback, never an optimistic guess — two explicit
         buttons (On/Off) are used instead of one toggle, for the same reason (nothing to reliably

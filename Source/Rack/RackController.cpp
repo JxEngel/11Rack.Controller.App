@@ -143,6 +143,11 @@ namespace Rack
         transport.send (SysExFrame::buildSet (SysExFrame::Command::tuner, isOn ? 1 : 0));
     }
 
+    void RackController::sendMidiCc (uint8_t ccNumber, uint8_t value)
+    {
+        transport.send ({ 0xB0, ccNumber, value });
+    }
+
     void RackController::handleIncomingBytes (const std::vector<uint8_t>& bytes)
     {
         auto parsed = SysExFrame::parse (bytes);

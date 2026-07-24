@@ -14,6 +14,8 @@ from the ElevenHack review, now resolved:
 1. **MIDI CC (official, documented)** — real-time control of the currently loaded rig's parameters
    while playing (turn a knob, hit a footswitch). Plain 3-byte MIDI Control Change messages,
    values 0-127. This is what a foot controller or Pro Tools automation would use live.
+   **Confirmed actually functional against real hardware (2026-07-24)**, not just documented —
+   see "sixth round" below.
 2. **Bulk SysEx transfer (unofficial, from ElevenHack)** — loading/saving whole rigs, querying rig
    names/lists, effect descriptions, rig switching. Used for preset/program *management*, not
    real-time tweaking.
@@ -39,7 +41,14 @@ parameters — the actual knob a given "Setting N" controls depends on which eff
 that slot. This lines up with ElevenHack's `Effect.mBuildEffect()`, which adds named knobs in a
 fixed order per effect type (e.g. Tri Knob Disto adds `Driv`, `Tone`, `Levl` in that order) — the
 working hypothesis is **CC "Setting 1", "Setting 2", "Setting 3"... map positionally to the order
-params are added in ElevenHack's per-effect-type builder**. Not yet verified against hardware.
+params are added in ElevenHack's per-effect-type builder**.
+
+**Confirmed against real hardware (2026-07-24)** — see "seventh round" below: with "Green JRC
+Disto" loaded (knob order `Driv`/"Overdrive", `Tone`, `Levl`/"Level"), **CC 27 ("Distortion Setting
+1") controlled the Overdrive knob** — exactly the first knob in that effect's `EffectDefinitions`
+order. This is the first real confirmation of the positional hypothesis, not just a plausible
+theory — it validates the core mechanism the entire per-effect parameter editing UI (Milestone 5)
+will depend on.
 
 | CC# | Parameter | Notes |
 |-----|-----------|-------|
@@ -246,7 +255,9 @@ still work, though each still needs its own direct confirmation before being tru
 - [ ] Confirm which port of the 2 MIDI inputs / 3 MIDI outputs is "the" control port
 - [x] Verify the Rig Description tuple-structure hypothesis with more samples — see fourth round
       below; confirmed.
-- [ ] Figure out what effect index 0 ("Eleven"/"DigiElvnELVu") actually represents
+- [ ] Figure out what effect index 0 ("Eleven"/"DigiElvnELVu") actually represents — an Effect
+      Index spinner (0-64) was added to the Diagnostics tab (2026-07-24) to browse all indices
+      freely rather than only index 0, to help figure this out
 - [x] Use the saved bulk-rig sample as a baseline for diffing future captures — done (see below).
 
 **2026-07-24 — fourth round: first real hardware run of the refactored `RackController`
@@ -306,15 +317,64 @@ negative input differently) and `RackController::setMainVolume`. `RigGlobalsComp
 now shows the 0.0-10.0 display scale directly, converting internally via `displayToRaw`/
 `rawToDisplay`.
 
-**Not yet confirmed**: the negative end of the range (does raw `-127` really show "0.0"?) and
-whether this same signed-range mistake affects any *other* single-value parameter beyond Main
-Volume — worth checking before assuming every future per-effect knob is safely unsigned-only.
+**Confirmed (2026-07-24)**: raw `-127` displays as **"0.0"** on the unit's own screen, exactly as
+the symmetric hypothesis predicted — the full `[-127, 127]` → `[0.0, 10.0]` map is now verified at
+all three key points (min, center, max), not just two.
+
+**Still not checked**: whether this same signed-range mistake affects any *other* single-value
+parameter beyond Main Volume — worth checking before assuming every future per-effect knob is
+safely unsigned-only.
 
 Also worth flagging: the underlying encoding is inherently lossy by about 1 raw unit (the `>>1` in
 `byteToEncodedInt` discards the low bit, so e.g. encoding `-1` decodes back as `-2` on a round
 trip) — a pre-existing property of ElevenHack's own scheme, not something introduced by this fix.
 Irrelevant to whether a *send* works correctly, but means our own decoded read-back display can be
 off by roughly one raw unit (a fraction of the smallest visible "0.1" display step).
+
+**2026-07-24 — seventh round: the CC "Setting N" positional-mapping hypothesis is confirmed.**
+Using the Diagnostics tab's Effect Index browser, confirmed the Effect Description catalog
+contains real, recognizable effect model names (not just the index-0 mystery entry). With the
+unit's currently-loaded rig showing **"Green JRC OD"** in its Distortion slot — matching
+`EffectDefinitions`' `"Green JRC Disto"` entry (effect ID 31), whose knob order is `Driv`
+("Overdrive"), `Tone`, `Levl` ("Level") — sent **CC 27 ("Distortion Setting 1")** via the new MIDI
+CC test tool. **It controlled the Overdrive knob specifically**, exactly the first knob in that
+effect's known order.
+
+This is the first real confirmation of the positional hypothesis (not just a plausible read of the
+source), and it validates the core mechanism the entire per-effect parameter editing UI
+(Milestone 5) depends on: `CC "Setting N"` really does map to the Nth knob of whichever effect is
+loaded, in the order `EffectDefinitions` already encodes.
+
+**Fully confirmed (2026-07-24)**, via the new `EffectEditorComponent` ("Effect Editor" tab): all
+three of "Green JRC Disto"'s knobs tested and working correctly — **CC 27 → Overdrive, CC 78 →
+Tone, CC 79 → Level**, exactly matching `EffectDefinitions`' knob order (`Driv`, `Tone`, `Levl`)
+position-for-position. The Bypass toggle (CC 25) was also confirmed working. This is no longer a
+single lucky match — three independent positions on the same effect all landed exactly where the
+hypothesis predicted, which is about as strong a confirmation as this kind of testing gets.
+
+**2026-07-24 — sixth round: MIDI CC confirmed to actually control the unit, not just documented.**
+Sent a plain 3-byte MIDI Control Change, `B0 45 7F` (CC 69 = 127, "Tuner On/Off" per the official
+chart), via the new Diagnostics-tab CC test tool. **The unit's tuner engaged for real.** This is
+the first confirmation that the official CC chart isn't just paper documentation — it's a genuine,
+working live-control mechanism, and validates the "two separate control mechanisms" architecture
+this whole project has been built around since Milestone 0.
+
+The unit replied with **two separate `ASYNCSET` messages**, not one:
+- `F0 13 0B 0F 02 40 01 F7` (inferred structure; only its *effect* was observed directly — it
+  decoded via our existing `CMD_TUNER` (`0x40`) handler, producing "Tuner: On")
+- `F0 13 0B 0F 02 41 40 01 F7` — command `0x41` (`CMD_TUNER_A`), params `[0x40, 0x01]`. Routed to
+  `onUnhandledMessage` exactly per its documented design (we deliberately don't decode this
+  command yet). **New finding**: `CMD_TUNER_A` is not unused/dead — it's a real paired
+  notification the unit sends alongside `CMD_TUNER` on every tuner state change. Its second param
+  byte (`0x40`) exactly matches `CMD_TUNER`'s own command byte — a plausible but unconfirmed
+  hypothesis is that `CMD_TUNER_A` is some kind of generic "referenced command's state changed"
+  wrapper (command-byte-being-referenced + new value), not something tuner-specific at all. Not
+  enough data yet to be sure - flagged as an open item.
+
+**Still open**: this confirms CC control works for a simple on/off toggle. It does **not** yet test
+the "CC 'Setting N' maps positionally to whichever knob a given effect adds in that order"
+hypothesis for *continuous* per-effect parameters (e.g. a distortion's drive/gain) — that needs a
+follow-up test against a `Setting N` CC while a specific, known effect is loaded.
 
 ## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
 
@@ -329,7 +389,15 @@ Summary retained here for quick reference:
 
 ## Open items
 
-- [ ] Verify the "CC Setting N → positional param order" hypothesis against real hardware
+- [x] Confirm MIDI CC actually controls the unit (not just documented) — **confirmed (2026-07-24)**,
+      see "sixth round" above (CC 69 engaged the real tuner).
+- [x] Verify the "CC Setting N → positional param order" hypothesis against real hardware —
+      **confirmed (2026-07-24)**, see "seventh round" above: CC 27/78/79 ("Distortion Setting
+      1/2/3") controlled Overdrive/Tone/Level respectively on the loaded "Green JRC Disto" effect —
+      all three knob positions confirmed, exactly matching `EffectDefinitions`' order.
+- [ ] Determine what `CMD_TUNER_A` (`0x41`) represents — a real paired `ASYNCSET` alongside
+      `CMD_TUNER` (`0x40`) on every tuner state change, not unused/dead as assumed. Possible generic
+      "referenced command changed" wrapper - unconfirmed (see sixth round above).
 - [ ] Resolve rig-switching mechanism (Program Change vs. CC vs. SysEx-only) — partially
       illuminated: the unit emits standard MIDI Bank Select (CC0/CC32) alongside a SysEx rig-select
       (see fourth round above), but whether Bank Select + Program Change alone can *drive* a rig
@@ -343,8 +411,12 @@ Summary retained here for quick reference:
 - [ ] Determine what the unhandled `ASYNCSET` command `0x03` (`CMD_SAVE_RIG`'s command byte, but in
       an async context) actually represents — arrives alongside `CMD_CURR_RIG_NUM` after a rig
       select; ElevenHack doesn't handle this case either
-- [ ] Confirm the negative end of Main Volume's range (does raw `-127` really display as "0.0"?) —
-      only the `0` and `+127` points are hardware-confirmed so far (see fifth round above)
 - [ ] Check whether other single-value parameters (beyond Main Volume) were also ported with the
       same unsigned-instead-of-signed mistake `encodeValue` had — Main Volume is fixed, but nothing
       else has been checked yet
+- [ ] Verify the "CC 'Setting N' maps positionally" hypothesis for **non-knob** params (toggles,
+      selectors) — confirmed for knobs only (Distortion, above). `EffectEditorComponent`'s Mod slot
+      now applies the same positional mapping to Chorus/Vibrato's Mode toggle and Sync selector as
+      an untested extension; needs a real hardware check before treating it as confirmed.
+- [ ] Wah and Mod slots in `EffectEditorComponent` (added 2026-07-24) are not yet hardware-tested —
+      only Distortion has been confirmed so far (see implementation-plan.md Milestone 5).

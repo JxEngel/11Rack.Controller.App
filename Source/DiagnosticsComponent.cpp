@@ -12,7 +12,6 @@ std::vector<DiagnosticsComponent::KnownAction> DiagnosticsComponent::makeKnownAc
         { "Request Current Rig Number",           [this] { controller.requestCurrentRig(); } },
         { "Request Rig Name (Bank 0, Rig 0)",     [this] { controller.requestRigName ({ 0, 0 }); } },
         { "Request Rig Description",              [this] { controller.requestRigDescription(); } },
-        { "Request Effect Description (Effect 0)",[this] { controller.requestEffectDescription (0); } },
         { "Request Bulk Rig",                     [this] { controller.requestBulkRig(); } },
     };
 }
@@ -32,6 +31,14 @@ DiagnosticsComponent::DiagnosticsComponent (Rack::RackController& controllerToUs
     addAndMakeVisible (rigNumberLabel);
     addAndMakeVisible (rigNumberSelector);
     addAndMakeVisible (selectRigButton);
+    addAndMakeVisible (effectIndexLabel);
+    addAndMakeVisible (effectIndexSelector);
+    addAndMakeVisible (requestEffectDescriptionButton);
+    addAndMakeVisible (ccNumberLabel);
+    addAndMakeVisible (ccNumberSelector);
+    addAndMakeVisible (ccValueLabel);
+    addAndMakeVisible (ccValueSelector);
+    addAndMakeVisible (sendCcButton);
     addAndMakeVisible (logBox);
 
     // Bank 0-1, rig 0-103 (matches ElevenRack::MAX_RIG_BANK). Initial values reflect the last
@@ -49,6 +56,32 @@ DiagnosticsComponent::DiagnosticsComponent (Rack::RackController& controllerToUs
     rigNumberSelector.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 40, 24);
 
     selectRigButton.onClick = [this] { sendSelectRig(); };
+
+    // 0-64, matching the confirmed real Effect Count = 65. Browse freely to see how the index
+    // space maps to real effect models - index 0 itself is a mystery ("Eleven"/"DigiElvnELVu",
+    // not a real effect name), which is exactly what prompted adding this. See docs/protocol-spec.md.
+    effectIndexLabel.attachToComponent (&effectIndexSelector, true);
+    effectIndexSelector.setSliderStyle (juce::Slider::IncDecButtons);
+    effectIndexSelector.setRange (0, 64, 1);
+    effectIndexSelector.setValue (0, juce::dontSendNotification);
+    effectIndexSelector.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 40, 24);
+    requestEffectDescriptionButton.onClick = [this] { requestSelectedEffectDescription(); };
+
+    // Defaults to CC 69 (Tuner On/Off) / value 127 (On) - see the header comment for why that's a
+    // good first test of the CC "Setting N" hypothesis.
+    ccNumberLabel.attachToComponent (&ccNumberSelector, true);
+    ccNumberSelector.setSliderStyle (juce::Slider::IncDecButtons);
+    ccNumberSelector.setRange (0, 127, 1);
+    ccNumberSelector.setValue (69, juce::dontSendNotification);
+    ccNumberSelector.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 40, 24);
+
+    ccValueLabel.attachToComponent (&ccValueSelector, true);
+    ccValueSelector.setSliderStyle (juce::Slider::IncDecButtons);
+    ccValueSelector.setRange (0, 127, 1);
+    ccValueSelector.setValue (127, juce::dontSendNotification);
+    ccValueSelector.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 40, 24);
+
+    sendCcButton.onClick = [this] { sendMidiCc(); };
 
     logBox.setMultiLine (true);
     logBox.setReadOnly (true);
@@ -89,6 +122,20 @@ void DiagnosticsComponent::resized()
     rigNumberSelector.setBounds (rigSelectRow.removeFromLeft (80).reduced (2));
 
     area.removeFromTop (6);
+    auto effectRow = area.removeFromTop (30);
+    requestEffectDescriptionButton.setBounds (effectRow.removeFromRight (200).reduced (2));
+    effectRow.removeFromLeft (90); // room for the auto-positioned "Effect Index" label
+    effectIndexSelector.setBounds (effectRow.removeFromLeft (80).reduced (2));
+
+    area.removeFromTop (6);
+    auto ccRow = area.removeFromTop (30);
+    sendCcButton.setBounds (ccRow.removeFromRight (200).reduced (2));
+    ccRow.removeFromLeft (50); // room for the auto-positioned "CC#" label
+    ccNumberSelector.setBounds (ccRow.removeFromLeft (80).reduced (2));
+    ccRow.removeFromLeft (60); // room for the auto-positioned "Value" label
+    ccValueSelector.setBounds (ccRow.removeFromLeft (80).reduced (2));
+
+    area.removeFromTop (6);
     logBox.setBounds (area);
 }
 
@@ -101,6 +148,29 @@ void DiagnosticsComponent::sendIdentityRequest()
     std::vector<uint8_t> bytes { 0xF0, 0x7E, 0x7F, 0x06, 0x01, 0xF7 };
     logMessage ("Sent Universal SysEx Identity Request: " + juce::String::toHexString (bytes.data(), (int) bytes.size()));
     controller.sendRaw (bytes);
+}
+
+void DiagnosticsComponent::sendMidiCc()
+{
+    // Plain 3-byte MIDI Control Change on channel 1 (0xB0): B0 <CC#> <value>. Not SysEx, so this
+    // goes through RackController::sendRaw() - see docs/protocol-spec.md Open Items for the
+    // "CC Setting N -> positional param order" hypothesis this is testing. Any reply (e.g. an
+    // ASYNCSET this triggers) will show up via the usual RackController::Listener callbacks if
+    // recognized, or onUnhandledMessage's raw hex dump if not.
+    auto ccNumber = static_cast<uint8_t> (static_cast<int> (ccNumberSelector.getValue()));
+    auto value = static_cast<uint8_t> (static_cast<int> (ccValueSelector.getValue()));
+
+    std::vector<uint8_t> bytes { 0xB0, ccNumber, value };
+    logMessage ("Sent MIDI CC " + juce::String (ccNumber) + " = " + juce::String (value) + ": "
+                + juce::String::toHexString (bytes.data(), (int) bytes.size()));
+    controller.sendRaw (bytes);
+}
+
+void DiagnosticsComponent::requestSelectedEffectDescription()
+{
+    auto index = static_cast<int> (effectIndexSelector.getValue());
+    logMessage ("Sent: Request Effect Description (Effect " + juce::String (index) + ")");
+    controller.requestEffectDescription (index);
 }
 
 void DiagnosticsComponent::sendSelectedKnownAction()
