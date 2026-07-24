@@ -5,6 +5,7 @@
 #include "Rack/RackController.h"
 #include "DiagnosticsComponent.h"
 #include "RigBrowserComponent.h"
+#include "RigGlobalsComponent.h"
 
 #include <vector>
 
@@ -38,6 +39,7 @@ private:
     Rack::RackController controller;
     DiagnosticsComponent diagnosticsComponent { controller };
     RigBrowserComponent rigBrowserComponent { controller };
+    RigGlobalsComponent rigGlobalsComponent { controller };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

@@ -35,6 +35,7 @@ target_sources(ElevenRackController PRIVATE
     Source/MainComponent.cpp
     Source/DiagnosticsComponent.cpp
     Source/RigBrowserComponent.cpp
+    Source/RigGlobalsComponent.cpp
     Source/Rack/SysExFrame.cpp
     Source/Rack/SevenBitCodec.cpp
     Source/Rack/EffectDefinitions.cpp

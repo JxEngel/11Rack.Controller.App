@@ -115,6 +115,36 @@ public:
             expectEquals ((int) SevenBitCodec::decodeValue (encoded), 64);
         }
 
+        // --- Negative values (2026-07-24 bug fix - see SevenBitCodec.h for the real hardware
+        // finding that led to this: Main Volume raw 0 displayed as the unit's own "5.0" (center),
+        // not "0.0" (minimum), because negative raw values - the lower half of the real range -
+        // were never reachable through the original uint8_t-typed encodeValue). ---
+
+        beginTest ("encodeValue(-1) matches Java's sign-extend-then-unsigned-shift semantics, "
+                   "verified independently in Python before porting");
+        {
+            auto encoded = SevenBitCodec::encodeValue (-1);
+            std::vector<uint8_t> expected { 0x7F, 0x00, 0x00, 0x00, 0x00 };
+            expect (encoded == expected);
+        }
+
+        beginTest ("encodeValue(-127) does not accidentally trigger the 126/127 special case");
+        {
+            auto encoded = SevenBitCodec::encodeValue (-127);
+            std::vector<uint8_t> expected { 0x40, 0x00, 0x00, 0x00, 0x00 };
+            expect (encoded == expected);
+        }
+
+        beginTest ("encodeValue then decodeValue round-trips exactly for a negative value");
+        {
+            // -64 happens to survive the lossy >>1 encoding exactly (unlike e.g. -1, which
+            // round-trips to -2 - an inherent one-bit-of-precision loss in this encoding scheme,
+            // not something introduced by this fix). Chosen so this test asserts an exact
+            // round-trip rather than a known-lossy approximation.
+            auto encoded = SevenBitCodec::encodeValue (-64);
+            expectEquals ((int) SevenBitCodec::decodeValue (encoded), -64);
+        }
+
         beginTest ("encodeTo7Bits output only ever contains 7-bit-safe bytes");
         {
             std::vector<uint8_t> input { 0x00, 0xFF, 0x80, 0x7F, 0x01 };

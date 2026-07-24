@@ -284,6 +284,38 @@ Three new findings from this round:
    naming doesn't quite capture, is unresolved — ElevenHack's own source doesn't handle this case
    either, so this is new ground, not a gap in our port specifically.
 
+**2026-07-24 — fifth round: Main Volume's real range is signed, and centered, not 0-127.**
+Building live two-way sync for the Main Volume slider (drag the slider, it writes to the device;
+the device confirms, the slider updates) surfaced a real bug: our C++ port of ElevenHack's
+`ParseUtils.byteToEncodedInt` had typed its input as `uint8_t` (unsigned), but the original Java
+signature takes a signed `byte`. This silently restricted every value we could ever *send* to the
+non-negative half of the true range.
+
+Confirmed against real hardware:
+- Sending raw value `0` (our previous "minimum") displayed as **"5.0"** on the unit's own screen —
+  the *center* of its 0.0-10.0 scale, not the minimum.
+- Sending raw value `127` (the special-cased "full-scale" encoding) displayed as **"10.0"** — the
+  maximum, as originally assumed.
+
+This gives a clean linear map, confirmed at two real points and assumed symmetric for the
+(previously unreachable) negative half: `display = 5.0 + raw * (5.0/127)`, i.e. raw range
+roughly `[-127, 127]` maps to display `[0.0, 10.0]`, centered at `0`/`5.0`. Fixed in
+`SevenBitCodec::encodeValue` (now takes `int8_t`, replicating Java's exact sign-extend-then-
+unsigned-shift semantics rather than a naive 8-bit shift, which would have quietly mishandled
+negative input differently) and `RackController::setMainVolume`. `RigGlobalsComponent`'s slider
+now shows the 0.0-10.0 display scale directly, converting internally via `displayToRaw`/
+`rawToDisplay`.
+
+**Not yet confirmed**: the negative end of the range (does raw `-127` really show "0.0"?) and
+whether this same signed-range mistake affects any *other* single-value parameter beyond Main
+Volume — worth checking before assuming every future per-effect knob is safely unsigned-only.
+
+Also worth flagging: the underlying encoding is inherently lossy by about 1 raw unit (the `>>1` in
+`byteToEncodedInt` discards the low bit, so e.g. encoding `-1` decodes back as `-2` on a round
+trip) — a pre-existing property of ElevenHack's own scheme, not something introduced by this fix.
+Irrelevant to whether a *send* works correctly, but means our own decoded read-back display can be
+off by roughly one raw unit (a fraction of the smallest visible "0.1" display step).
+
 ## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
 
 See [project-overview.md](project-overview.md) "Prior Art Found" section for the full writeup.
@@ -311,3 +343,8 @@ Summary retained here for quick reference:
 - [ ] Determine what the unhandled `ASYNCSET` command `0x03` (`CMD_SAVE_RIG`'s command byte, but in
       an async context) actually represents — arrives alongside `CMD_CURR_RIG_NUM` after a rig
       select; ElevenHack doesn't handle this case either
+- [ ] Confirm the negative end of Main Volume's range (does raw `-127` really display as "0.0"?) —
+      only the `0` and `+127` points are hardware-confirmed so far (see fifth round above)
+- [ ] Check whether other single-value parameters (beyond Main Volume) were also ported with the
+      same unsigned-instead-of-signed mistake `encodeValue` had — Main Volume is fixed, but nothing
+      else has been checked yet

@@ -56,7 +56,11 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
   - **Rig Browser** — the first real piece of the actual editor UI (Milestone 5): click "Refresh
     Rig List" to fetch all 208 rig names from the device (one at a time — takes a little while),
     see them listed with their "A1"–"Z4" location labels, and double-click one to load it.
-  Both tabs share the same `RackController`/connection — connect once at the top, use either tab.
+  - **Globals** — Main Volume (slider + Set/Request) and Tuner (explicit On/Off buttons) controls.
+    First hardware test of `setMainVolume()`/`setTunerOn()`. The Tuner status label only updates
+    from a real device-confirmed reply — there's no query for tuner state, so it won't show
+    anything until you either click a button here or engage the tuner on the unit itself.
+  All three tabs share the same `RackController`/connection — connect once at the top, use any tab.
 
 ## Debugging
 

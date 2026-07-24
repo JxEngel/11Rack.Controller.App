@@ -11,11 +11,25 @@ namespace Rack::SevenBitCodec
     // hardware-verified test cases these were checked against before porting.
 
     // The 5-byte "encoded int" scheme used for single continuous values (e.g. Main Volume).
-    // `value` is expected in the normal MIDI byte range [0, 127]. Values 126 and 127 hit a
-    // special-cased "full-scale" encoding distinct from the general linear formula used for
-    // everything else - verified against real hardware (Main Volume = 127 encodes to exactly
-    // 3F 7F 7F 7F 0F, and the unit's own reply for that value decodes back to 127).
-    std::vector<uint8_t> encodeValue (uint8_t value);
+    //
+    // `value` is SIGNED - matching ElevenHack's original `byte v` (Java bytes are signed), not
+    // the `uint8_t` this was first ported as. That first attempt looked correct (127 round-tripped
+    // fine against real hardware) but was actually a bug: restricting callers to non-negative
+    // input meant only the upper half of the real range was ever reachable. Confirmed against
+    // real hardware (2026-07-24): Main Volume raw value 0 displayed as "5.0" on the unit's own
+    // screen (the *center* of its 0.0-10.0 scale, not the minimum), and raw 127 displayed as
+    // "10.0" (the maximum) - i.e. the true range is signed, roughly [-127, 127], centered at 0.
+    // See docs/protocol-spec.md and RigGlobalsComponent for the display-value conversion this
+    // enables.
+    //
+    // Values 126 and 127 hit a special-cased "full-scale" encoding distinct from the general
+    // linear formula used for everything else (verified: encodes to exactly 3F 7F 7F 7F 0F,
+    // matching a real captured hardware reply). The special-case check and the general formula
+    // both replicate Java's exact `v>>>1` semantics - sign-extend the byte to a wider int, THEN
+    // apply an unsigned/logical shift to that wider pattern - not a naive 8-bit shift, which would
+    // give silently wrong results for negative input (Java bytes promote-then-shift; a raw uint8_t
+    // shift never sign-extends in the first place).
+    std::vector<uint8_t> encodeValue (int8_t value);
     int8_t decodeValue (const std::vector<uint8_t>& encoded);
 
     // General 7-bit-safe pack/unpack for arbitrary-length payloads (e.g. bulk rig transfers).

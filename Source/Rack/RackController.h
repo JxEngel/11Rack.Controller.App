@@ -107,13 +107,19 @@ namespace Rack
         // --- Writes ---
         void selectRig (RigId rig); // Confirmed working against real hardware.
 
+        // Confirmed working against real hardware (2026-07-24). `volume` is SIGNED - see
+        // SevenBitCodec.h for why (a real hardware mismatch caught a bug where this was originally
+        // unsigned, silently making half the real range unreachable). Roughly [-127, 127], with 0
+        // at the unit's own displayed "5.0" (center of its 0.0-10.0 scale) - see
+        // RigGlobalsComponent for the display-value conversion.
+        void setMainVolume (int8_t volume);
+        void setTunerOn (bool isOn); // Confirmed working against real hardware (2026-07-24).
+
         // NOT YET HARDWARE-VALIDATED - ported from ElevenHack's ElevenTransmitter for API
         // completeness only. `saveRig` in particular overwrites stored rig data. Do not wire any
         // of these up to a UI control without a deliberate, separate decision to test them first.
         void saveRig (int rigNumber);
         void setRigName (const std::string& name);
-        void setMainVolume (uint8_t volume);
-        void setTunerOn (bool isOn);
 
     private:
         void handleIncomingBytes (const std::vector<uint8_t>& bytes);

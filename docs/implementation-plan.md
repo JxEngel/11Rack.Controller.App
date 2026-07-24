@@ -100,6 +100,14 @@ sequences already captured in [protocol-spec.md](protocol-spec.md) and
       a real subtlety: `decodeFrom7Bits` always returns exactly one more byte than the true data
       length (a deterministic "remainder" from the bit-packing tail) — something else (the `.tfx`
       structure) has to know the true length. **Build-verified (2026-07-24)**: all 5 pass.
+      - **Bug fix (2026-07-24)**: `encodeValue` was typed `uint8_t` (unsigned) instead of the
+        signed `int8_t` ElevenHack's original Java `byte` actually uses — found via a real hardware
+        mismatch on Main Volume (see "fifth round" in [protocol-spec.md](protocol-spec.md)). Fixed
+        to take `int8_t`, replicating Java's exact sign-extend-then-unsigned-shift semantics for
+        both the special-case check and the general formula (not a naive 8-bit shift, which
+        silently mishandles negative input differently). 4 new tests added for negative-value
+        encode/decode, including a clean exact round-trip case and confirming the special case
+        doesn't misfire for negative input.
 - [x] `EffectDefinitions.{h,cpp}` + `EffectDefinitionsTests.cpp` — **done (2026-07-24)**: full
       effect/parameter registry ported from `Effect.mBuildEffect()`/`EffectAmpCab.java` — 52
       specific effect-instance IDs across ~20 effect families, plus the 16 known Amp/Cab models and
@@ -245,7 +253,29 @@ Nothing above is trusted until confirmed against the real unit:
 - [ ] Live state sync: reflect hardware-originated changes (front-panel action) in the UI in real
       time — partially done already for the rig browser (current-rig highlight); still needed for
       per-parameter values once the editing screens exist
-- [ ] Tuner, main volume, and other rig-global controls
+- [x] Tuner, main volume, and other rig-global controls — `RigGlobalsComponent` ("Globals" tab)
+      added (2026-07-24): first hardware test of `setMainVolume()`/`setTunerOn()`, neither
+      previously validated — **confirmed working (2026-07-24)** in their original button-based
+      form (Set/Request buttons for volume, On/Off buttons for tuner).
+      - **Main Volume reworked into live two-way sync** immediately after, on the user's request,
+        to prove the pattern the future per-effect parameter controls will reuse: dragging the
+        slider sends `setMainVolume()` on every change (`onValueChange`); a device-confirmed
+        `onMainVolumeReceived()` moves the slider to match, using `juce::dontSendNotification` so
+        the programmatic update doesn't loop back into another send. The separate "Set"/"Request"
+        buttons and status label were removed as redundant once live sync replaced them.
+      - **Live sync immediately surfaced a real bug** (2026-07-24): the slider's "0" displayed as
+        the unit's own "5.0" (center of its 0.0-10.0 scale), not "0.0" — because
+        `SevenBitCodec::encodeValue` had been typed `uint8_t` (unsigned) instead of the signed
+        `int8_t` ElevenHack's original Java actually uses, silently making the entire lower half of
+        the real range unreachable. Fixed (see `SevenBitCodec.{h,cpp}` above and
+        [protocol-spec.md](protocol-spec.md) "fifth round"); the slider now shows the unit's real
+        0.0-10.0 scale directly, converting to/from the raw signed wire value internally. Confirmed
+        against real hardware at two points (raw 0 = "5.0", raw 127 = "10.0"); the negative end
+        (raw -127 = "0.0"?) is not yet independently confirmed.
+      - Tuner has no state query in the protocol, so its status label only ever reflects a real
+        device-confirmed `onTunerStateReceived` callback, never an optimistic guess — two explicit
+        buttons (On/Off) are used instead of one toggle, for the same reason (nothing to reliably
+        toggle *from*).
 
 ## Not yet scheduled / parked
 

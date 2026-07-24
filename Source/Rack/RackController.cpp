@@ -122,7 +122,7 @@ namespace Rack
         transport.send (msg);
     }
 
-    void RackController::setMainVolume (uint8_t volume)
+    void RackController::setMainVolume (int8_t volume)
     {
         auto encoded = SevenBitCodec::encodeValue (volume);
 

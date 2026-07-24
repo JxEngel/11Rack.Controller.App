@@ -2,12 +2,19 @@
 
 namespace Rack::SevenBitCodec
 {
-    std::vector<uint8_t> encodeValue (uint8_t value)
+    std::vector<uint8_t> encodeValue (int8_t value)
     {
-        if ((value >> 1) == 0x3F)
+        // int8_t -> int32_t is a well-defined sign-extending conversion; reinterpreting those same
+        // bits as uint32_t and shifting THAT is a well-defined logical shift - together matching
+        // Java's `v>>>1` (promote byte to int via sign extension, then unsigned-shift the result)
+        // exactly, for both positive and negative input.
+        int32_t signExtended = value;
+        uint32_t shifted = static_cast<uint32_t> (signExtended) >> 1;
+
+        if (shifted == 0x3F)
             return { 0x3F, 0x7F, 0x7F, 0x7F, 0x0F };
 
-        return { static_cast<uint8_t> ((value >> 1) & 0x7F), 0, 0, 0, 0 };
+        return { static_cast<uint8_t> (shifted & 0x7F), 0, 0, 0, 0 };
     }
 
     int8_t decodeValue (const std::vector<uint8_t>& encoded)
