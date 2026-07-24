@@ -60,7 +60,22 @@ namespace
             bulkRigPayload = decodedTfxBytes;
         }
         void onUnhandledMessage (const std::vector<uint8_t>&) override { ++unhandledCount; }
+
+        int rigNameFetchCompleteCount = 0;
+        void onRigNameFetchComplete() override { ++rigNameFetchCompleteCount; }
     };
+
+    // Builds a synthetic (but structurally real) Rig Name reply frame for a given bank/rig/name -
+    // same layout as the real captured "Big Blue" reply, just parameterized.
+    std::vector<uint8_t> makeRigNameReply (uint8_t bank, uint8_t rig, const std::string& name)
+    {
+        std::vector<uint8_t> msg { 0xF0, 0x13, 0x0B, 0x0F, 0x12, 0x04, bank, rig };
+        for (char c : name)
+            msg.push_back (static_cast<uint8_t> (c));
+        msg.push_back (0);
+        msg.push_back (0xF7);
+        return msg;
+    }
 }
 
 class RackControllerTests : public juce::UnitTest
@@ -191,6 +206,83 @@ public:
             bool connected = controller.connect ("not-a-real-input", "not-a-real-output");
             expect (! connected);
             expect (! controller.isConnected());
+        }
+
+        // --- requestAllRigNames() sequencing (uses friend access to inspect/set private state
+        // directly, rather than simulating all 208 steps one at a time) ---
+
+        beginTest ("requestAllRigNames() starts at Bank 0, Rig 0");
+        {
+            RackController controller;
+            controller.requestAllRigNames();
+
+            expect (controller.fetchingAllRigNames);
+            expect (controller.nextRigNameFetchTarget == (RackController::RigId { 0, 0 }));
+        }
+
+        beginTest ("each matching reply advances to the next rig in sequence");
+        {
+            RackController controller;
+            controller.requestAllRigNames();
+
+            controller.handleIncomingBytes (makeRigNameReply (0, 0, "Big Blue"));
+            expect (controller.nextRigNameFetchTarget == (RackController::RigId { 0, 1 }));
+
+            controller.handleIncomingBytes (makeRigNameReply (0, 1, "Some Rig"));
+            expect (controller.nextRigNameFetchTarget == (RackController::RigId { 0, 2 }));
+        }
+
+        beginTest ("a reply that doesn't match the expected next rig is ignored for sequencing");
+        {
+            RackController controller;
+            controller.requestAllRigNames();
+            controller.handleIncomingBytes (makeRigNameReply (0, 0, "Big Blue"));
+            expect (controller.nextRigNameFetchTarget == (RackController::RigId { 0, 1 }));
+
+            // Simulates e.g. a manual "Request Rig Name" from elsewhere arriving mid-fetch.
+            controller.handleIncomingBytes (makeRigNameReply (1, 50, "Unrelated"));
+            expect (controller.nextRigNameFetchTarget == (RackController::RigId { 0, 1 }));
+        }
+
+        beginTest ("reaching the last rig of bank 0 wraps to bank 1, rig 0");
+        {
+            RackController controller;
+            controller.fetchingAllRigNames = true;
+            controller.nextRigNameFetchTarget = { 0, RackController::kRigsPerBank - 1 };
+
+            controller.handleIncomingBytes (makeRigNameReply (0, RackController::kRigsPerBank - 1, "Last In Bank 0"));
+
+            expect (controller.fetchingAllRigNames); // not done yet - bank 1 still to go
+            expect (controller.nextRigNameFetchTarget == (RackController::RigId { 1, 0 }));
+        }
+
+        beginTest ("reaching the last rig of bank 1 completes the fetch and notifies listeners");
+        {
+            RackController controller;
+            RecordingListener listener;
+            controller.addListener (&listener);
+
+            controller.fetchingAllRigNames = true;
+            controller.nextRigNameFetchTarget = { 1, RackController::kRigsPerBank - 1 };
+
+            controller.handleIncomingBytes (makeRigNameReply (1, RackController::kRigsPerBank - 1, "Last Rig Overall"));
+
+            expect (! controller.fetchingAllRigNames);
+            expectEquals (listener.rigNameFetchCompleteCount, 1);
+        }
+
+        beginTest ("cancelRigNameFetch() stops the sequence");
+        {
+            RackController controller;
+            controller.requestAllRigNames();
+            expect (controller.fetchingAllRigNames);
+
+            controller.cancelRigNameFetch();
+            expect (! controller.fetchingAllRigNames);
+
+            // A reply arriving after cancellation shouldn't restart/advance anything.
+            controller.handleIncomingBytes (makeRigNameReply (0, 0, "Big Blue"));
+            expect (! controller.fetchingAllRigNames);
         }
     }
 };

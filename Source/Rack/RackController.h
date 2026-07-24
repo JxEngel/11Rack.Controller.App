@@ -34,7 +34,14 @@ namespace Rack
         {
             uint8_t bank = 0;
             uint8_t rig = 0;
+
+            bool operator== (const RigId& other) const noexcept { return bank == other.bank && rig == other.rig; }
+            bool operator!= (const RigId& other) const noexcept { return ! (*this == other); }
         };
+
+        // From ElevenRack.java's MAX_RIG_BANK / rig bank layout.
+        static constexpr int kRigsPerBank = 104;
+        static constexpr int kNumBanks = 2;
 
         class Listener
         {
@@ -47,6 +54,10 @@ namespace Rack
             virtual void onRigNameReceived (RigId rig, const std::string& name) {}
             virtual void onEffectDescriptionReceived (int effectIndex, const std::string& strId, const std::string& name) {}
             virtual void onTunerStateReceived (bool isOn) {}
+
+            // Fires once requestAllRigNames() has stepped through every rig slot (individual
+            // names still arrive via onRigNameReceived as usual, one at a time).
+            virtual void onRigNameFetchComplete() {}
 
             // Raw/decoded-but-unstructured payloads - see the open items in
             // docs/protocol-spec.md (Rig Description tuple structure, .tfx bulk format).
@@ -78,6 +89,16 @@ namespace Rack
         void requestEffectDescription (int effectIndex);
         void requestBulkRig();
 
+        // Sequentially requests every rig name across both banks (kNumBanks * kRigsPerBank
+        // total) - one request, wait for its reply, then the next, mirroring ElevenHack's
+        // ElevenInit rather than bursting all requests at once (untested/risky on real hardware).
+        // Each name still arrives via the usual onRigNameReceived; onRigNameFetchComplete() fires
+        // once every slot has been requested. No timeout/retry if a reply never arrives - see
+        // cancelRigNameFetch() as a manual escape hatch, and docs/implementation-plan.md for why
+        // this simplification was chosen (matches ElevenHack, no observed unreliability so far).
+        void requestAllRigNames();
+        void cancelRigNameFetch();
+
         // Escape hatch for generic/diagnostic messages that aren't Eleven-Rack-specific commands -
         // e.g. a Universal MIDI Identity Request. Deliberately narrow: prefer a named method above
         // for anything that's actually part of this protocol.
@@ -97,9 +118,13 @@ namespace Rack
     private:
         void handleIncomingBytes (const std::vector<uint8_t>& bytes);
         void handleParsedFrame (const SysExFrame::ParsedFrame& frame, const std::vector<uint8_t>& rawBytes);
+        void advanceRigNameFetch (RigId justReceived);
 
         MidiTransport transport;
         juce::ListenerList<Listener> listeners;
+
+        bool fetchingAllRigNames = false;
+        RigId nextRigNameFetchTarget {};
 
         // Global-scope qualifier matters here: an unqualified `friend class RackControllerTests;`
         // inside `namespace Rack` would declare/befriend `Rack::RackControllerTests` instead of

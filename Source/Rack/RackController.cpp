@@ -73,6 +73,18 @@ namespace Rack
         transport.send (SysExFrame::buildQuery (SysExFrame::Command::getBulkTfx));
     }
 
+    void RackController::requestAllRigNames()
+    {
+        fetchingAllRigNames = true;
+        nextRigNameFetchTarget = { 0, 0 };
+        requestRigName (nextRigNameFetchTarget);
+    }
+
+    void RackController::cancelRigNameFetch()
+    {
+        fetchingAllRigNames = false;
+    }
+
     void RackController::sendRaw (const std::vector<uint8_t>& bytes)
     {
         transport.send (bytes);
@@ -182,6 +194,7 @@ namespace Rack
                     RigId rig { params[0], params[1] };
                     auto name = SysExFrame::extractString (params, 2);
                     listeners.call ([&] (Listener& l) { l.onRigNameReceived (rig, name); });
+                    advanceRigNameFetch (rig);
                 }
                 break;
 
@@ -221,5 +234,34 @@ namespace Rack
                 listeners.call ([&] (Listener& l) { l.onUnhandledMessage (rawBytes); });
                 break;
         }
+    }
+
+    void RackController::advanceRigNameFetch (RigId justReceived)
+    {
+        if (! fetchingAllRigNames)
+            return;
+
+        // Not the reply we were waiting for (e.g. a manual "Request Rig Name" from elsewhere
+        // arrived mid-fetch) - ignore it for sequencing purposes, keep waiting for the real one.
+        if (justReceived != nextRigNameFetchTarget)
+            return;
+
+        if (nextRigNameFetchTarget.rig + 1 < kRigsPerBank)
+        {
+            nextRigNameFetchTarget.rig = static_cast<uint8_t> (nextRigNameFetchTarget.rig + 1);
+        }
+        else if (nextRigNameFetchTarget.bank + 1 < kNumBanks)
+        {
+            nextRigNameFetchTarget.bank = static_cast<uint8_t> (nextRigNameFetchTarget.bank + 1);
+            nextRigNameFetchTarget.rig = 0;
+        }
+        else
+        {
+            fetchingAllRigNames = false;
+            listeners.call ([] (Listener& l) { l.onRigNameFetchComplete(); });
+            return;
+        }
+
+        requestRigName (nextRigNameFetchTarget);
     }
 }

@@ -211,12 +211,40 @@ Nothing above is trusted until confirmed against the real unit:
 
 ## Milestone 5 — Editor UI
 
-- [ ] Rig/preset browser (list, load, save, rename) — UI equivalent of ElevenHack's rig-loader,
-      built fresh in JUCE
-- [ ] Per-effect parameter editing screens (knobs/selectors/switches) driven by the Milestone 1
-      effect/parameter table
+- [x] **App shell restructured (2026-07-24)** to support multiple real feature screens: device
+      connection controls (input/output pickers, refresh, status) moved to a new top-level
+      `MainComponent`, which owns the single `RackController` and hosts feature components as tabs
+      via `juce::TabbedComponent`. The old `MainComponent` content (known-command picker, Select
+      Rig, raw-send diagnostics) became `DiagnosticsComponent` — kept as a "Diagnostics" tab since
+      it's still useful for direct protocol testing, not replaced.
+- [x] **Rig/preset browser — first slice (2026-07-24)**: `RigBrowserComponent`, a "Rig Browser" tab
+      listing all 208 rig slots (both banks x 104 rigs). Required a new `RackController` capability
+      first: `requestAllRigNames()` sequentially requests every rig name (one at a time, waiting
+      for each reply before the next — mirrors ElevenHack's `ElevenInit`, not a 208-request burst,
+      which is untested/risky on real hardware), with `cancelRigNameFetch()` as a manual escape
+      hatch and `onRigNameFetchComplete()` marking the end. 6 new `RackController` tests cover the
+      sequencing logic directly (advance-on-match, ignore-on-mismatch, bank wrap-around,
+      completion, cancellation) using the friend-access seam to jump to boundary cases rather than
+      simulating all 208 steps.
+      - Rig rows show a computed "A1"–"Z4" location label matching `ElevenRack.java`'s
+        `m_rigLocToName` scheme (verified against the real hardware-confirmed "B4" = Bank 0, Rig 7)
+      - Current rig is highlighted live via `onCurrentRigReceived`
+      - Double-click a row to load it via `selectRig()`
+      - **Not yet done**: load (via double-click) is there, but *save* and *rename* from this UI
+        are not — those map to `saveRig()`/`setRigName()`, which are still unvalidated against
+        hardware (see Milestone 4) and deliberately not wired to any control yet
+      - **Testing note**: unlike the `Rack/` codec/service layer, this and future UI components
+        aren't unit-tested the same way — JUCE `Component` painting/layout isn't practically
+        covered by `juce::UnitTest` without much more test infrastructure (e.g. screenshot
+        testing), which is out of scope for now. Verification here is manual, against real
+        hardware, same as the app always has been.
+      - **Build-verified against real hardware (2026-07-24)**: rig list populated correctly, and
+        double-clicking a rig successfully loaded it onto the unit.
+- [ ] Per-effect parameter editing screens (knobs/selectors/switches) driven by
+      `EffectDefinitions` (Milestone 3)
 - [ ] Live state sync: reflect hardware-originated changes (front-panel action) in the UI in real
-      time, via the Milestone 3 listener
+      time — partially done already for the rig browser (current-rig highlight); still needed for
+      per-parameter values once the editing screens exist
 - [ ] Tuner, main volume, and other rig-global controls
 
 ## Not yet scheduled / parked

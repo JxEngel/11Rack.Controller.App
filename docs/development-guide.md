@@ -47,12 +47,16 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
 ## Running it
 
 - Status bar has a **Run** (▷) button, or Command Palette > **"CMake: Run Without Debugging"**.
-- What you'll see right now: a small MIDI test harness, not the final editor. It lists available
-  MIDI input/output devices, connects via `RackController` (the real service layer, not ad-hoc
-  code), and logs decoded/human-readable info for anything it recognizes ("Effect Count: 65",
-  "Rig Name (Bank 0, Rig 0): Big Blue") — raw hex only shows up for messages it doesn't recognize
-  yet, via `onUnhandledMessage`. This is still Milestone 3/4 territory (proving the plumbing works
-  against real hardware), not the actual editor UI in Milestone 5.
+- The window has MIDI input/output device pickers and a Refresh button at the top (shared across
+  everything below), and two tabs:
+  - **Diagnostics** — the original protocol test harness: a known-command picker, the one
+    validated write (Select Rig), a raw-send button for generic diagnostics (Universal SysEx
+    Identity Request), and a log of decoded, human-readable info for anything `RackController`
+    recognizes ("Effect Count: 65") — raw hex only for messages it doesn't recognize yet.
+  - **Rig Browser** — the first real piece of the actual editor UI (Milestone 5): click "Refresh
+    Rig List" to fetch all 208 rig names from the device (one at a time — takes a little while),
+    see them listed with their "A1"–"Z4" location labels, and double-click one to load it.
+  Both tabs share the same `RackController`/connection — connect once at the top, use either tab.
 
 ## Debugging
 
