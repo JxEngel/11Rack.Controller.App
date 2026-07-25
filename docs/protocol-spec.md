@@ -410,6 +410,107 @@ the "CC 'Setting N' maps positionally to whichever knob a given effect adds in t
 hypothesis for *continuous* per-effect parameters (e.g. a distortion's drive/gain) — that needs a
 follow-up test against a `Setting N` CC while a specific, known effect is loaded.
 
+**2026-07-24 — eighth round: real hardware only has 2 Reverb models, and `EffectEditorComponent`'s
+Reverb dropdown showed 5.** User feedback while trying the new Reverb slot: the unit itself only
+offers 2 selectable Reverb effects, but the dropdown listed 5 entries — 2x "Spring_Reverb" and 3x
+"Stereo Reverb" — and whichever of the 3 "Stereo Reverb" IDs was tried on the unit matched the
+single effect the unit calls **"Eleven SR."**
+
+Root cause: `EffectDefinitions`' "sibling ID" groups (multiple ElevenHack effectIds sharing one
+name/params — already used elsewhere, e.g. Volume Pedal's 38/72, Chorus/Vibrato's 11/39/40) are not
+distinct selectable models, just multiple underlying IDs for the same real effect. Reverb's groups
+(37/47 for the Spring reverb, 51/52/53 for Eleven SR) hit this hardest since they have the most
+siblings, but `EffectEditorComponent`'s dropdown was populated with one entry per raw effectId
+rather than deduplicating by name — so it showed every sibling as if it were a separate option. Now
+hardware-confirmed (not just theorized) that these sibling IDs are functionally identical for live
+CC control purposes; the leading hypothesis for *why* they exist at all is one ID per rack slot an
+effect can be placed into (native slot / FX1 / FX2 — see the alternate CC sets many effects have
+"as FX1"/"as FX2" in the Chapter 9 breakdown above), not per-model variation.
+
+**Fixed**: `EffectEditorComponent::rebuildEffectList()` now deduplicates by definition name, keeping
+the first effectId seen per name. Also renamed the two Reverb entries to match the unit's own
+on-screen names exactly (`EffectDefinitions.cpp`'s internal `"Spring_Reverb"`/`"Stereo Reverb"` →
+`"Blackpanel Spring Reverb"`/`"Eleven SR"`). This fix generalizes to the Mod slot too, which had the
+same problem less visibly (Chorus/Vibrato's 3 IDs and Orange Phaser's 2 IDs were also each showing
+as separate dropdown entries before this fix, just not yet reported).
+
+**2026-07-24 — ninth round: Chorus/Vibrato's Sync control didn't work - wrong value scale, not a
+wiring bug.** User report: "chorus/vibrato controls don't seem to work." Root cause found by
+re-examining the Chapter 9 breakdown: our `Sync` selector's options used ElevenHack's own small
+0-13 index scheme (the encoding for the *bulk SysEx rig-file field*, a completely different
+transport), not the live-CC encoding. The manual documents a distinct "FX Sync Setting Values"
+table for CC-controlled sync parameters: the CC byte (0-127) is bucketed into 14 contiguous ranges
+(0-4, 5-14, 15-24, ... 124-127), one per named note value. Sending the raw 0-13 index instead meant
+almost every selectable option landed in or near the very first bucket ("Off") regardless of which
+one was actually picked — from the user's perspective, moving the Sync dropdown did effectively
+nothing.
+
+**Fixed**: added a shared `ccSyncSelector()` helper in `EffectDefinitions.cpp` using the real
+14-value/14-range table, each option's CC value set to its range's midpoint. Applied to both
+Chorus/Vibrato's `Sync` and Vibe Phaser's `Sync` (the latter was previously modeled as a plain
+knob specifically because this exact table wasn't confirmed yet for it - same context, same label,
+so almost certainly the same scale).
+
+**Confirmed (2026-07-24)**: after the fix, Sync works. So do Bypass, the Mode toggle, and the
+Chorus/Rate/Depth knobs — the "Chorus" knob briefly looked broken too, but that was the unit
+sitting in Vibrato mode (no live readback, so we don't know/set the unit's actual current mode) —
+the Chorus-specific knob is naturally inert while in Vibrato mode, not a bug. Switching Mode
+explicitly and retrying confirmed it. **Chorus/Vibrato is now the second fully hardware-confirmed
+effect in `EffectEditorComponent`, after Distortion.**
+
+**Tenth round: the Mod slot was missing half the unit's real effect list.** User feedback: the
+unit's Mod slot actually offers 6 effects, in this on-screen order: C1 Chor/Vib, Multi Chorus,
+Flanger, Vibe Phaser, Orange Phaser, Roto Speaker. Only 3 were in the dropdown. Added the other 3
+using the same Chapter 9 sourcing as before:
+- **Flanger**: fully known now (Bypass, Pre-Delay, Depth, Rate, Sync, Feedback) - fits the existing
+  7-slot Mod `settingCc` array cleanly.
+- **Multi Chorus**: fully known now (Bypass, Rate, Sync, Depth, Pre-Delay, Mix, Tri/Sine, Voices,
+  Lo Cut, Width) - needed the Mod slot's `settingCc` array extended from 7 to 9 entries, since two
+  of its real CCs (89, 90) fall outside the officially-named "Modulation Setting 1-7" list.
+- **Roto Speaker**: initially only partially known (Bypass, Speed, Balance) - its "Type" selector
+  was left out because the manual's named-option count (9 tokens: "120 122 21H Foam Drum Rover
+  Memphis Wolf Watery") and range count (8: 0-9,10-27,28-45,46-63,64-82,83-100,101-118,119-127)
+  didn't match during transcription.
+
+**Eleventh round: Roto Speaker's Type - confirmed a list control, wrong merge guessed, then
+corrected against the real on-unit list.** User feedback: Roto Speaker's Type is indeed a
+selector, not a knob. First attempt reasoned that "120" and "122" (adjacent tokens with no
+separator in the transcription) were one grouped option, "120/122," since that gave exactly 8
+options matching the 8 known CC ranges. **Confirmed wrong**: 120 and 122 are two distinct, separate
+options on the real unit. The user then read the actual 8-option list directly off the unit:
+120, 122, 21H, "Foam Dr", Rover, Memphis, Wolf, Watery - the real merge was "Foam"+"Drum" into one
+(likely display-truncated) option, "Foam Dr", not "120"+"122". Re-added with this corrected list,
+values still at each range's midpoint. **The option list and order are now hardware-confirmed; the
+specific CC value chosen per option is still just a range midpoint, not independently verified.**
+
+None of Flanger, Multi Chorus, or Roto Speaker are hardware-tested yet - only Chorus/Vibrato and
+Orange Phaser (via Distortion's earlier positional-knob confirmation) have real hardware evidence
+behind them so far.
+
+**Twelfth round: Orange Phaser's Sync was also wrongly modeled as a toggle.** User feedback: Orange
+Phaser's Sync is a list, not an on/off switch, same as the other Sync controls in this slot. The
+manual's own description settles it - "Sync Synchronizes the modulation rate to the Rig tempo by a
+specific rhythmic subdivision" is unambiguously the tempo-sync note-value scheme (the same shared
+`ccSyncSelector` table used elsewhere), not a toggle; this was a modeling mistake made when Orange
+Phaser was first added, before that shared table existed. Fixed in `EffectDefinitions.cpp`. Not yet
+re-tested against hardware.
+
+This is now the second Sync-as-toggle mistake found (after Chorus/Vibrato's Sync-as-tiny-index
+mistake) — worth deliberately re-checking every other place a bare `toggle("Sync", "Sync")` or
+similarly-labeled control appears before assuming any of them are simple on/off switches.
+
+**Thirteenth round: Eleven SR's "Type" selector added, resolving the 26-vs-25 count mismatch the
+same way as Roto Speaker's.** User feedback: Eleven SR's Type selector was missing from the UI (it
+had been deliberately left unmodeled - see the eighth/tenth-round notes above - because the
+manual's raw transcription came out to 26 name tokens against only 25 CC ranges). Same pattern as
+Roto Speaker: the user confirmed against the real on-unit list that the first two tokens, "Echo"
+and "Room", are one option, "Echo Room" - not two. That resolves the count to 25-and-25 cleanly.
+Added as a selector in `EffectDefinitions.cpp` (CC values at each range's midpoint) and wired into
+the Reverb slot's existing `settingCc` array (Type lands on the already-present Setting5/CC76 slot
+- no array changes needed). **Option list/order is hardware-confirmed; the specific CC value per
+option is still just a range midpoint, not independently verified** - same caveat as Roto Speaker's
+Type. Not yet re-tested against hardware end-to-end.
+
 ## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
 
 See [project-overview.md](project-overview.md) "Prior Art Found" section for the full writeup.

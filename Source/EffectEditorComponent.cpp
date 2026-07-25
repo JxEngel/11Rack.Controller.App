@@ -46,28 +46,39 @@ namespace
             {
                 "Mod",
                 50, // "Modulation On/Off"
-                { 61, 52, 53, 54, 57, 51, 56 }, // "Modulation Setting 1-7"
-                { 11, 39, 40, 34, 71, 35, 46 }, // Chorus/Vibrato, Orange Phaser, Vibe Phaser
-                11, // Chorus/Vibrato
-                "Only Mod-slot effects with real decoded parameters are listed here (Chorus/"
-                "Vibrato, Orange Phaser, Vibe Phaser) - others this slot can hold (Multi Chorus, "
-                "Flanger, Roto Speaker) have no decoded knobs in EffectDefinitions and are "
-                "omitted. The CC order for Chorus/Vibrato and Vibe Phaser is sourced directly "
-                "from the official Eleven Rack User Guide (Chapter 9); Orange Phaser's positional "
-                "mapping is hardware-confirmed for knobs (see the Distortion slot). Not yet "
-                "hardware-tested for this slot. No live readback.",
+                // "Modulation Setting 1-7", plus 2 extra CCs (Lo Cut/Width) Multi Chorus alone uses
+                // beyond the officially-named Setting-N list - see EffectDefinitions.cpp.
+                { 61, 52, 53, 54, 57, 51, 56, 89, 90 },
+                // Order matches the unit's own front-panel effect list exactly (confirmed
+                // 2026-07-24): C1 Chor/Vib, Multi Chorus, Flanger, Vibe Phaser, Orange Phaser,
+                // Roto Speaker.
+                { 11, 39, 40, 88, 89, 90, 69, 70, 35, 46, 34, 71, 75, 76, 77 },
+                11, // C1 Chor/Vib
+                "All 6 Mod-slot effects the unit itself offers are listed here, in the unit's own "
+                "on-screen order. CC data for Chorus/Vibrato, Vibe Phaser, Flanger, Multi Chorus, "
+                "and Roto Speaker is sourced directly from the official Eleven Rack User Guide "
+                "(Chapter 9); Orange Phaser's Rate knob is hardware-confirmed (see the Distortion "
+                "slot for the positional mapping), but its Sync was recently corrected from a "
+                "toggle to a tempo-sync list, same as the other Sync controls here - not yet "
+                "re-tested. Roto Speaker's Type option list/order is hardware-confirmed, but the "
+                "specific CC value per option is only a range midpoint guess, not independently "
+                "verified (see EffectDefinitions.cpp). Confirmed 2026-07-24: Chorus/Vibrato's "
+                "knobs, Sync, Bypass, and Mode toggle all work correctly. The rest of this slot is "
+                "not yet hardware-tested. No live readback.",
             },
             {
                 "Reverb",
                 36, // "Reverb On/Off"
                 { 18, 38, 40, 39, 76, 41 }, // "Reverb Setting 1-6"
-                { 37, 47, 51, 52, 53 }, // Spring_Reverb, Stereo Reverb
+                { 37, 47, 51, 52, 53 }, // Blackpanel Spring Reverb (37,47), Eleven SR (51,52,53)
                 37, // Blackpanel Spring Reverb
                 "Real parameters sourced from the official Eleven Rack User Guide (Chapter 9) - "
-                "Mix/Decay/Tone for Spring Reverb, plus Pre-Delay for Stereo Reverb. Stereo "
-                "Reverb's \"Type\" selector (CC 76, ~25 named reverb types) is NOT included - its "
-                "range-to-name mapping wasn't transcribed with enough confidence to encode without "
-                "a hardware check. Not yet hardware-tested. No live readback.",
+                "Mix/Decay/Tone for Blackpanel Spring Reverb, plus Pre-Delay and a 25-option Type "
+                "list (CC 76) for Eleven SR. Type's option list/order is hardware-confirmed, but "
+                "the specific CC value per option is only a range midpoint guess, not "
+                "independently verified (see EffectDefinitions.cpp). Confirmed 2026-07-24: the "
+                "unit only has these 2 real Reverb models (a dropdown dedup bug briefly made it "
+                "look like 5). No live readback.",
             },
         };
         return configs;
@@ -153,9 +164,24 @@ void EffectEditorComponent::rebuildEffectList()
         return;
 
     effectSelector.clear (juce::dontSendNotification);
+
+    // `slot->effectIds` can list several ElevenHack effectIds that all share one definition name
+    // (e.g. "sibling" IDs like Volume Pedal's 38/72 - see EffectDefinitions.cpp) - these are NOT
+    // distinct selectable models, just multiple underlying IDs for the same real effect (most
+    // likely one per rack slot it can be placed into). Listing every raw ID produced a dropdown
+    // with visibly duplicate-looking entries (confirmed on real hardware 2026-07-24: Reverb showed
+    // 5 entries - 2x "Blackpanel Spring Reverb", 3x "Eleven SR" - when the unit only has 2 actual
+    // Reverb options). Deduplicate by name, keeping the first effectId seen as that entry's ID.
+    juce::StringArray seenNames;
     for (int id : slot->effectIds)
-        if (auto def = Rack::EffectDefinitions::lookup (id))
-            effectSelector.addItem (def->name, id); // effectId used directly as the item ID
+    {
+        auto def = Rack::EffectDefinitions::lookup (id);
+        if (! def || seenNames.contains (def->name))
+            continue;
+
+        seenNames.add (def->name);
+        effectSelector.addItem (def->name, id);
+    }
 
     noteLabel.setText (slot->note, juce::dontSendNotification);
 

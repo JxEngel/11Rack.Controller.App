@@ -40,6 +40,29 @@ namespace Rack::EffectDefinitions
             return toggle ("bypa", "Bypass");
         }
 
+        // A tempo-sync selector as controlled via live MIDI CC - NOT the same scale as the small
+        // 0-13 index ElevenHack's own bulk-SysEx field uses for this same kind of field (that
+        // index is for the rig-file/bulk-transfer wire format, a completely different transport).
+        // Real hardware buckets the live CC byte (0-127) into ranges - this is the official Eleven
+        // Rack User Guide, Chapter 9 "FX Sync Setting Values" table (14 named values over 14
+        // contiguous 0-127 ranges), which going by its position/generic naming in the manual is
+        // evidently a shared table for every CC-controlled "Sync" parameter, not specific to the
+        // one section (FX Loop) it happened to be printed under. Each option's value here is the
+        // midpoint of its real range, so sending it lands solidly inside the bucket, not on an
+        // edge. Sending the raw 0-13 index instead (as this code did before 2026-07-24) mostly
+        // lands in/near the "Off" bucket regardless of which option was picked - the likely cause
+        // of a real hardware report that Chorus/Vibrato's Sync control "doesn't work."
+        ParamDefinition ccSyncSelector (std::string key, std::string label)
+        {
+            return selector (std::move (key), std::move (label), {
+                { 2, "Off" }, { 9, "Whole Note" }, { 19, "Dotted Half Note" }, { 29, "Half Note" },
+                { 39, "Half Note Triplet" }, { 49, "Dotted Quarter Note" }, { 59, "Quarter Note" },
+                { 68, "Quarter Note Triplet" }, { 78, "Dotted Eighth Note" }, { 88, "Eighth Note" },
+                { 98, "Eighth Note Triplet" }, { 108, "Dotted Sixteenth Note" },
+                { 118, "Sixteenth Note" }, { 125, "Sixteenth Note Triplet" },
+            });
+        }
+
         // Adds one EffectDefinition per id in `ids`, all sharing the same name/params/isFullyKnown
         // - mirrors how ElevenHack's mBuildEffect() has multiple effectIds mapping to one
         // "sibling group" (e.g. two Wah pedal variants with identical parameters).
@@ -173,29 +196,88 @@ namespace Rack::EffectDefinitions
             // 1 instead of Setting 5) until this fix, caught before any hardware test of this slot.
             addGroup (all, { 11, 39, 40 }, "Chorus/Vibrato", {
                 bypass(), knob ("ChIn", "Chorus"), knob ("VbRt", "Vibrato Rate"),
-                selector ("Sync", "Sync", {
-                    { 0, "None" }, { 1, "Whole Note" }, { 2, "Whole dot" }, { 3, "Half Note" },
-                    { 4, "Half dot" }, { 5, "Quarter Note" }, { 6, "Quarter dot" },
-                    { 7, "Eighth Note" }, { 8, "Eighth dot" }, { 9, "Sixteenth Note" },
-                    { 10, "Sixteenth dot" }, { 11, "Thirty-second Note" }, { 13, "Thirty-second dot" },
-                }),
+                ccSyncSelector ("Sync", "Sync"),
                 knob ("VbDp", "Vibrato Depth"), toggle ("Mode", "Chorus/Vibrato"),
             });
 
             // --- Orange Phaser (2 variants, identical parameters) ---
-            addGroup (all, { 34, 71 }, "Orange Phaser", { bypass(), knob ("Sped", "Rate"), toggle ("Sync", "Sync") });
+            // Sync was originally modeled as a plain on/off toggle - **confirmed wrong on real
+            // hardware (2026-07-24)**: it's a tempo-sync note-value list, not a toggle. The
+            // official manual's own description settles it: "Sync Synchronizes the modulation
+            // rate to the Rig tempo by a specific rhythmic subdivision" - the same kind of control
+            // as Chorus/Vibrato's Sync, so modeled with the same shared `ccSyncSelector` table.
+            addGroup (all, { 34, 71 }, "Orange Phaser", {
+                bypass(), knob ("Sped", "Rate"), ccSyncSelector ("Sync", "Sync"),
+            });
 
             // --- Vibe Phaser (2 variants, identical parameters) ---
             // Previously name-only (ElevenHack itself never decoded real params for this one) -
             // promoted to fully known using the official Eleven Rack User Guide, Chapter 9 ("as
             // MOD": Volume=CC61/Setting1, Depth=CC52/Setting2, Rate=CC53/Setting3,
-            // Sync=CC54/Setting4, Chorus/Vibrato mode toggle=CC57/Setting5). The manual doesn't
-            // describe Sync's real type here (unlike Chorus/Vibrato's own Sync, which ElevenHack
-            // separately confirms is a note-duration selector) - modeled as a plain knob pending
-            // confirmation. Not yet hardware-tested.
+            // Sync=CC54/Setting4, Chorus/Vibrato mode toggle=CC57/Setting5). Sync modeled as the
+            // same tempo-sync selector as Chorus/Vibrato's own Sync (see `ccSyncSelector` above) -
+            // both are named "Sync" in the same Modulation CC context, so almost certainly the
+            // same value table. Not yet hardware-tested.
             addGroup (all, { 35, 46 }, "Vibe Phaser", {
                 bypass(), knob ("Volm", "Volume"), knob ("Dpth", "Depth"), knob ("Rate", "Rate"),
-                knob ("Sync", "Sync"), toggle ("Mode", "Chorus/Vibrato"),
+                ccSyncSelector ("Sync", "Sync"), toggle ("Mode", "Chorus/Vibrato"),
+            });
+
+            // --- Flanger (2 variants, identical parameters) ---
+            // Previously name-only - promoted to fully known using the official Eleven Rack User
+            // Guide, Chapter 9 (as MOD: Bypass=50, Pre-Delay=61/Setting1, Depth=52/Setting2,
+            // Rate=53/Setting3, Sync=54/Setting4, Feedback=57/Setting5). Key names below are
+            // synthetic (ElevenHack never assigned real ones for this name-only effect), unlike
+            // keys ported from ElevenHack's own source elsewhere in this file. Sync modeled as the
+            // same tempo-sync selector as Chorus/Vibrato/Vibe Phaser. Not yet hardware-tested.
+            addGroup (all, { 69, 70 }, "Flanger", {
+                bypass(), knob ("PreD", "Pre-Delay"), knob ("Dpth", "Depth"), knob ("Rate", "Rate"),
+                ccSyncSelector ("Sync", "Sync"), knob ("Fdbk", "Feedback"),
+            });
+
+            // --- Multi Chorus ---
+            // Previously name-only - promoted to fully known using the official Eleven Rack User
+            // Guide, Chapter 9. Its params map onto the Mod slot's shared CCs differently than
+            // Chorus/Vibrato's do - expected, since each effect model assigns its own knobs to the
+            // shared "Setting N" CC numbers independently (as MOD: Bypass=50, Rate=61/Setting1,
+            // Sync=52/Setting2, Depth=53/Setting3, Pre-Delay=54/Setting4, Mix=57/Setting5,
+            // Tri/Sine=51/Setting6, Voices=56/Setting7). Also uses two CCs (89 Lo Cut, 90 Width)
+            // outside the officially-named "Modulation Setting 1-7" list - the Mod slot's
+            // `settingCc` array in EffectEditorComponent.cpp was extended to 9 entries to reach
+            // them. Synthetic key names (ElevenHack never assigned real ones). Not yet
+            // hardware-tested.
+            addGroup (all, { 88, 89, 90 }, "Multi Chorus", {
+                bypass(), knob ("Rate", "Rate"), ccSyncSelector ("Sync", "Sync"),
+                knob ("Dpth", "Depth"), knob ("PreD", "Pre-Delay"), knob ("Mix ", "Mix"),
+                toggle ("TriS", "Tri/Sine"), knob ("Voic", "Voices"), knob ("LoCt", "Lo Cut"),
+                knob ("Widt", "Width"),
+            });
+
+            // --- Roto Speaker ---
+            // Previously name-only - promoted to fully known using the official Eleven Rack User
+            // Guide, Chapter 9 (as MOD: Bypass=50, Speed=61/Setting1, Balance=52/Setting2,
+            // Type=53/Setting3). Confirmed on real hardware (2026-07-24) that Type is a
+            // list/selector control, not a knob.
+            //
+            // Speed is a 3-way range selector (Slow/Brake/Fast over 0-31/32-95/96-127). Type's raw
+            // transcription had 9 name tokens ("120 122 21H Foam Drum Rover Memphis Wolf Watery")
+            // against only 8 CC ranges (0-9,10-27,28-45,46-63,64-82,83-100,101-118,119-127) - a
+            // first attempt (wrongly) assumed "120"/"122" were one merged option; **confirmed on
+            // real hardware they're two distinct options**, and the actual real list, read
+            // directly off the unit, is 8 options: 120, 122, 21H, "Foam Dr" (a single, likely
+            // truncated option name - "Foam" and "Drum" were mis-split into two tokens during PDF
+            // extraction, not "120"/"122"), Rover, Memphis, Wolf, Watery. Each option's CC value
+            // below is its range's midpoint, in that order - hardware-confirmed option list and
+            // order, but the specific CC value chosen per range is still just the midpoint, not
+            // independently verified.
+            addGroup (all, { 75, 76, 77 }, "Roto Speaker", {
+                bypass(),
+                selector ("Sped", "Speed", { { 15, "Slow" }, { 63, "Brake" }, { 111, "Fast" } }),
+                knob ("Bal ", "Balance"),
+                selector ("Type", "Type", {
+                    { 4, "120" }, { 18, "122" }, { 36, "21H" }, { 54, "Foam Dr" },
+                    { 73, "Rover" }, { 91, "Memphis" }, { 109, "Wolf" }, { 123, "Watery" },
+                }),
             });
 
             // --- Graphic EQ (2 variants, identical parameters) ---
@@ -217,18 +299,43 @@ namespace Rack::EffectDefinitions
             // Previously name-only (ElevenHack itself never decoded real params for either) -
             // promoted to fully known using the official Eleven Rack User Guide, Chapter 9
             // ("Blackpanel Spring Reverb": Bypass=36, Mix=18/Setting1, Decay=38/Setting2,
-            // Tone=40/Setting3; "Eleven SR" adds Pre-Delay=39/Setting4). Not yet hardware-tested.
-            addGroup (all, { 37, 47 }, "Spring_Reverb", {
+            // Tone=40/Setting3; "Eleven SR" adds Pre-Delay=39/Setting4).
+            //
+            // Real hardware only exposes 2 selectable Reverb models (confirmed 2026-07-24) -
+            // named "Blackpanel Spring Reverb" and "Eleven SR" on the unit itself, matching these
+            // two groups exactly. The 2-and-3-sibling-ID groups below (37/47, 51/52/53) are NOT 3
+            // distinct "Stereo Reverb" variants - every one of Eleven SR's 3 IDs was confirmed on
+            // hardware to be the same single reverb model. Consistent with the general pattern
+            // elsewhere in this file (e.g. Volume Pedal's 38/72, Chorus/Vibrato's 11/39/40) where
+            // one real effect gets multiple ElevenHack effectIds - most likely one ID per rack
+            // slot it can be placed into (its native slot, FX1, FX2 - see the "(as FX1)"/"(as
+            // FX2)" alternate CC sets the manual lists for many effects), not per-model variation.
+            // Names below match the unit's own on-screen labels exactly, not ElevenHack's internal
+            // field name (which had a stray underscore, "Spring_Reverb").
+            addGroup (all, { 37, 47 }, "Blackpanel Spring Reverb", {
                 bypass(), knob ("Mix ", "Mix"), knob ("Decy", "Decay"), knob ("Tone", "Tone"),
             });
-            // Eleven SR also has a "Type" selector (CC 76/Setting5, ~25 named reverb types over
-            // uneven CC-value ranges per the manual) - deliberately NOT modeled here yet. The
-            // range-to-name mapping needs careful transcription (each option spans a different,
-            // non-uniform CC range) that's easy to get subtly wrong without a hardware check;
-            // better to omit it than encode a guessed mapping.
-            addGroup (all, { 51, 52, 53 }, "Stereo Reverb", {
+            // Eleven SR also has a "Type" selector (CC 76/Setting5, 25 named reverb types over
+            // uneven CC-value ranges). The manual's raw transcription ran the option names
+            // together with no delimiters and came out to 26 tokens against 25 CC ranges -
+            // resolved with the user's help (2026-07-24) reading the real on-unit list: the first
+            // two tokens, "Echo"/"Room", are one option, "Echo Room" (same kind of mis-split as
+            // Roto Speaker's "Foam"/"Drum" -> "Foam Dr"). Each option's CC value below is its
+            // range's midpoint - option list/order is hardware-confirmed, but the exact CC value
+            // per option is still just a range midpoint, not independently verified.
+            addGroup (all, { 51, 52, 53 }, "Eleven SR", {
                 bypass(), knob ("Mix ", "Mix"), knob ("Decy", "Decay"), knob ("Tone", "Tone"),
                 knob ("PreD", "Pre-Delay"),
+                selector ("Type", "Type", {
+                    { 1, "Echo Room" }, { 5, "Studio" }, { 10, "Small Room" }, { 16, "Jazz Club" },
+                    { 21, "Small Club" }, { 26, "Garage" }, { 32, "Medium Room" },
+                    { 37, "Tiled Room" }, { 42, "Wood Room" }, { 48, "Small Theater" },
+                    { 53, "Medium Theater" }, { 58, "Large Theater" }, { 64, "Rich Hall" },
+                    { 69, "Concert Hall" }, { 74, "Bright Hall" }, { 80, "Church" },
+                    { 85, "Cathedral" }, { 90, "Arena" }, { 96, "Small Plate" },
+                    { 101, "Medium Plate" }, { 106, "Large Plate" }, { 112, "Canyon" },
+                    { 117, "Supa Long" }, { 122, "Early Reflect 1" }, { 126, "Early Reflect 2" },
+                }),
             });
 
             // --- Effect types ElevenHack only identified by name (real params not decoded) ---
@@ -239,9 +346,6 @@ namespace Rack::EffectDefinitions
             addNameOnlyGroup (all, { 27, 48 }, "BBDDelay");
             addNameOnlyGroup (all, { 28, 49 }, "Tape Delay");
             addNameOnlyGroup (all, { 80, 81, 82 }, "Dyn Delay");
-            addNameOnlyGroup (all, { 88, 89, 90 }, "Multi Chorus");
-            addNameOnlyGroup (all, { 69, 70 }, "Flanger");
-            addNameOnlyGroup (all, { 75, 76, 77 }, "Roto Speaker");
 
             return all;
         }

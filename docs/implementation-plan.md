@@ -331,6 +331,24 @@ Nothing above is trusted until confirmed against the real unit:
           before. See protocol-spec.md Open Items for all of the above.
         - Build-verified (compiles, all 52 test groups pass) but **not yet hardware-tested** — Wah,
           Mod, and Reverb all still need a real hardware pass; only Distortion has one so far.
+      - **Chorus/Vibrato Sync bug found and fixed (2026-07-24)** — hardware report: "chorus/vibrato
+        controls don't seem to work." Root cause: the `Sync` selector used ElevenHack's small
+        0-13 bulk-SysEx-field index instead of the real live-CC encoding (a 0-127 byte bucketed
+        into 14 ranges, per the manual's "FX Sync Setting Values" table) — sending the tiny index
+        landed in/near the "Off" bucket regardless of the option picked. Fixed via a shared
+        `ccSyncSelector()` helper, applied to both Chorus/Vibrato and Vibe Phaser. **Confirmed
+        working on real hardware (2026-07-24)** after the fix — Bypass, Mode toggle, Chorus, Rate,
+        Depth, and Sync all correct. (The Chorus knob briefly looked broken too, but that was the
+        unit sitting in Vibrato mode from earlier testing, not a bug - no live readback means we
+        don't know/force the unit's current mode.) **Chorus/Vibrato is now the second fully
+        hardware-confirmed effect, after Distortion.**
+      - **Mod slot expanded to all 6 real on-unit effects (2026-07-24)** — was missing half the
+        unit's actual Mod-slot list (only Chorus/Vibrato, Orange Phaser, Vibe Phaser were present).
+        Added, in the unit's own on-screen order: Flanger (fully known), Multi Chorus (fully known -
+        needed the Mod slot's `settingCc` array extended from 7 to 9 entries for two CCs outside
+        the standard "Setting 1-7" list), and Roto Speaker (partially known - Speed/Balance only,
+        its Type selector omitted for the same low-confidence reason as Eleven SR's reverb Type).
+        Not yet hardware-tested.
 - [ ] Live state sync: reflect hardware-originated changes (front-panel action) in the UI in real
       time — partially done already for the rig browser (current-rig highlight); still needed for
       per-parameter values once the editing screens exist
