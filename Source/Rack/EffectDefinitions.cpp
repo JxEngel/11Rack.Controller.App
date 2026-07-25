@@ -338,8 +338,19 @@ namespace Rack::EffectDefinitions
                 }),
             });
 
+            // --- FX Loop (rig-level utility, not effect-selectable - see docs/implementation-plan.md) ---
+            // Previously name-only - promoted to fully known using the official Eleven Rack User
+            // Guide, Chapter 9 (Bypass=107, Send=19, Return=108, Mix=88). Unlike every other slot
+            // in this file, FX Loop's CCs are fixed/direct, not a "Setting N" positional scheme -
+            // there's only ever one FX Loop, not several selectable models, so it doesn't fit
+            // `EffectEditorComponent`'s "pick a model, map its knobs positionally" pattern. Exposed
+            // directly in `RigGlobalsComponent` instead, with fixed CCs, same as Tap Tempo. Not yet
+            // hardware-tested.
+            addGroup (all, { 16, 17, 56, 57, 73, 14, 15 }, "Fx Loop", {
+                bypass(), knob ("Send", "Send"), knob ("Retn", "Return"), knob ("Mix ", "Mix"),
+            });
+
             // --- Effect types ElevenHack only identified by name (real params not decoded) ---
-            addNameOnlyGroup (all, { 16, 17, 56, 57, 73, 14, 15 }, "Fx Loop");
             addNameOnlyGroup (all, { 32 }, "Gray Compressor");
             addNameOnlyGroup (all, { 85, 86 }, "Dyn Compressor");
             addNameOnlyGroup (all, { 78, 79 }, "Para EQ");

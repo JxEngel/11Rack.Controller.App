@@ -511,6 +511,15 @@ the Reverb slot's existing `settingCc` array (Type lands on the already-present 
 option is still just a range midpoint, not independently verified** - same caveat as Roto Speaker's
 Type. Not yet re-tested against hardware end-to-end.
 
+**Fourteenth round: Tap Tempo and FX Loop added to `RigGlobalsComponent`.** After a status check on
+what's still missing overall (Delay, FX Loop, FX1/FX2, Tap Tempo), added the two easy ones: Tap
+Tempo (CC 64, a single momentary button - "64-127 = a tap") and FX Loop (Bypass=107, Send=19,
+Return=108, Mix=88 - promoted from name-only to real params in `EffectDefinitions.cpp`). Neither
+fits `EffectEditorComponent`'s "pick which model is loaded" pattern - there's exactly one of each
+on the whole unit, not several selectable models - so both were added directly to
+`RigGlobalsComponent` alongside Main Volume/Tuner instead, using their fixed CCs (not a "Setting N"
+positional scheme). Not yet hardware-tested. Delay and FX1/FX2 remain open - see Open Items.
+
 ## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
 
 See [project-overview.md](project-overview.md) "Prior Art Found" section for the full writeup.

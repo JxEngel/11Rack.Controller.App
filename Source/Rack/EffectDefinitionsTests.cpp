@@ -98,14 +98,26 @@ public:
             }
         }
 
-        beginTest ("name-only effect types (e.g. Fx Loop) are flagged isFullyKnown = false");
+        beginTest ("name-only effect types (e.g. Gray Compressor) are flagged isFullyKnown = false");
         {
-            auto def = EffectDefinitions::lookup (16);
+            auto def = EffectDefinitions::lookup (32);
             expect (def.has_value());
             if (def)
             {
                 expect (! def->isFullyKnown);
                 expectEquals ((int) def->params.size(), 1); // bypass only
+            }
+        }
+
+        beginTest ("lookup(16) returns Fx Loop with its 4 real rig-level utility parameters");
+        {
+            auto def = EffectDefinitions::lookup (16);
+            expect (def.has_value());
+            if (def)
+            {
+                expectEquals (juce::String (def->name), juce::String ("Fx Loop"));
+                expect (def->isFullyKnown);
+                expectEquals ((int) def->params.size(), 4); // bypass, Send, Return, Mix
             }
         }
 

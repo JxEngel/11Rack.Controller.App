@@ -349,6 +349,16 @@ Nothing above is trusted until confirmed against the real unit:
         the standard "Setting 1-7" list), and Roto Speaker (partially known - Speed/Balance only,
         its Type selector omitted for the same low-confidence reason as Eleven SR's reverb Type).
         Not yet hardware-tested.
+      - **Three more corrections from continued hardware testing (2026-07-24)**: Roto Speaker's
+        Type selector (added, reverted after a wrong name-merge guess, then re-added correctly with
+        the user's help reading the real on-unit list: 120, 122, 21H, "Foam Dr", Rover, Memphis,
+        Wolf, Watery); Orange Phaser's Sync (was wrongly modeled as an on/off toggle - the manual's
+        own description settles it as the same tempo-sync list as every other Sync control, fixed
+        via `ccSyncSelector`); and Eleven SR's Type selector (added, using the same
+        user-confirmed-list approach as Roto Speaker - the first two "names" were actually one,
+        "Echo Room"). See [protocol-spec.md](protocol-spec.md) rounds eleven through thirteen for
+        the full detail on each. All three option lists/orders are hardware-confirmed; the specific
+        CC value chosen per option remains an unverified range-midpoint guess in every case.
 - [ ] Live state sync: reflect hardware-originated changes (front-panel action) in the UI in real
       time — partially done already for the rig browser (current-rig highlight); still needed for
       per-parameter values once the editing screens exist
@@ -375,6 +385,21 @@ Nothing above is trusted until confirmed against the real unit:
         device-confirmed `onTunerStateReceived` callback, never an optimistic guess — two explicit
         buttons (On/Off) are used instead of one toggle, for the same reason (nothing to reliably
         toggle *from*).
+      - **Tap Tempo and FX Loop added (2026-07-24)** — the two remaining "easy" gaps identified when
+        auditing what's still missing overall (Delay and FX1/FX2 are the harder remaining ones, see
+        below). Neither fits `EffectEditorComponent`'s "pick which model is loaded" pattern, since
+        there's exactly one Tap Tempo and one FX Loop on the whole unit, not several selectable
+        models - both exposed directly here instead, using fixed CCs (not a "Setting N" positional
+        scheme). Tap Tempo (CC 64) is a single momentary button - one click, one tap, nothing to
+        read back or sync. FX Loop (Bypass=107, Send=19, Return=108, Mix=88) is Bypass + 3 knobs,
+        newly promoted from name-only to real params in `EffectDefinitions.cpp`. Not yet
+        hardware-tested.
+      - **Still open**: Delay (BBD Delay/Dyn Delay/Tape Echo - real per-knob data exists in the
+        manual, but its print order doesn't match ascending Setting-N/CC order the way every other
+        category does, so the true order needs careful reconstruction before it's safe to
+        implement) and FX1/FX2 (still blocked on not knowing which effect family a given rig
+        assigns to those flexible slots - would need the still-unresolved Rig Description decode,
+        or a hardware capture, to unblock). See protocol-spec.md Open Items.
 
 ## Not yet scheduled / parked
 

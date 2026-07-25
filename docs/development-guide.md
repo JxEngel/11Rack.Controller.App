@@ -57,10 +57,12 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
   - **Rig Browser** — the first real piece of the actual editor UI (Milestone 5): click "Refresh
     Rig List" to fetch all 208 rig names from the device (one at a time — takes a little while),
     see them listed with their "A1"–"Z4" location labels, and double-click one to load it.
-  - **Globals** — Main Volume (slider + Set/Request) and Tuner (explicit On/Off buttons) controls.
-    First hardware test of `setMainVolume()`/`setTunerOn()`. The Tuner status label only updates
-    from a real device-confirmed reply — there's no query for tuner state, so it won't show
-    anything until you either click a button here or engage the tuner on the unit itself.
+  - **Globals** — rig-level utilities that aren't effect-selectable (there's only ever one of
+    each on the unit): Main Volume (a live two-way-synced slider — drag it and it sends live,
+    and it moves on its own if the unit's own front panel changes it), Tuner (explicit On/Off
+    buttons — no state query exists, so the status label only updates from a real
+    device-confirmed reply, not an optimistic guess), Tap Tempo (a single momentary button — one
+    click, one tap), and FX Loop (Bypass + Send/Return/Mix knobs).
   - **Effect Editor** — live per-effect parameter editing over MIDI CC, driven by
     `EffectDefinitions`. A **Slot** picker (Distortion / Wah / Mod / Reverb) followed by an **Effect**
     picker scoped to whichever models actually have real decoded parameters for that slot, then

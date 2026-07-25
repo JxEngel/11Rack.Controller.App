@@ -3,12 +3,14 @@
 #include <JuceHeader.h>
 #include "Rack/RackController.h"
 
-// Main Volume and Tuner controls - the first UI test of RackController::setMainVolume() and
-// setTunerOn(), neither of which was hardware-validated before this. Both are safe/reversible
-// (no stored data overwritten), unlike saveRig(). See docs/implementation-plan.md Milestone 5.
+// Main Volume, Tuner, Tap Tempo, and FX Loop controls - rig-level utilities that (unlike
+// Distortion/Wah/Mod/Reverb) aren't effect-selectable: there's exactly one Main Volume, one Tuner,
+// one Tap Tempo, and one FX Loop on the whole unit, so none of them need
+// `EffectEditorComponent`'s "pick which model is loaded" dropdown. See docs/implementation-plan.md
+// Milestone 5.
 //
-// Main Volume is live two-way sync, proving the pattern the future per-effect parameter controls
-// will reuse: dragging the slider sends setMainVolume() on every change (onValueChange), and a
+// Main Volume is live two-way sync, proving the pattern later per-effect parameter controls reuse:
+// dragging the slider sends setMainVolume() on every change (onValueChange), and a
 // device-confirmed onMainVolumeReceived() moves the slider to match - using
 // juce::dontSendNotification when doing so, so that programmatic update doesn't loop back around
 // and re-trigger onValueChange (which would just re-send the same value pointlessly).
@@ -23,6 +25,14 @@
 // device-confirmed onTunerStateReceived callback, never an optimistic guess from clicking a
 // button. Two explicit buttons (On/Off) rather than a single toggle, for the same reason: we
 // can't reliably track "current state" to toggle from.
+//
+// Tap Tempo (CC 64) is momentary, not a persistent value - clicking the button sends one "tap"
+// (value 127, "64-127 = a tap" per the official CC chart); there's nothing to read back or sync.
+//
+// FX Loop (Bypass=107, Send=19, Return=108, Mix=88 - see EffectDefinitions.cpp's "Fx Loop" entry)
+// uses fixed, direct CCs, not a "Setting N" positional scheme - unlike every effect in
+// EffectEditorComponent, so it's exposed here instead as plain Bypass + 3 knobs. No live readback,
+// same limitation as the per-effect editor screens.
 class RigGlobalsComponent : public juce::Component,
                             private Rack::RackController::Listener
 {
@@ -51,6 +61,18 @@ private:
     juce::TextButton tunerOnButton  { "Tuner On" };
     juce::TextButton tunerOffButton { "Tuner Off" };
     juce::Label tunerStatusLabel;
+
+    juce::Label tapTempoLabel { {}, "Tap Tempo" };
+    juce::TextButton tapTempoButton { "Tap" };
+
+    juce::Label fxLoopLabel { {}, "FX Loop" };
+    juce::ToggleButton fxLoopBypassToggle { "Bypass" };
+    juce::Label fxLoopSendLabel { {}, "Send" };
+    juce::Slider fxLoopSendSlider;
+    juce::Label fxLoopReturnLabel { {}, "Return" };
+    juce::Slider fxLoopReturnSlider;
+    juce::Label fxLoopMixLabel { {}, "Mix" };
+    juce::Slider fxLoopMixSlider;
 
     Rack::RackController& controller;
 
