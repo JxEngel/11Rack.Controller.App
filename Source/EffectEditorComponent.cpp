@@ -80,6 +80,58 @@ namespace
                 "unit only has these 2 real Reverb models (a dropdown dedup bug briefly made it "
                 "look like 5). No live readback.",
             },
+            {
+                "Delay",
+                28, // "Delay On/Off"
+                { 62, 33, 35, 85, 87, 34, 48, 49, 55, 59, 72, 73 }, // "Delay Setting 1-12"
+                { 27, 48, 80, 81, 82, 28, 49 }, // BBD Delay, Dyn Delay, Tape Echo
+                27, // BBD Delay
+                "Real parameters sourced from the official Eleven Rack User Guide (Chapter 9 CC "
+                "table, cross-checked against Chapter 3's plain-English descriptions to get each "
+                "param's real type right - e.g. BBD Delay's \"Mod\" and Tape Echo's \"Hiss\" are "
+                "switches, not knobs). Dyn Delay's Mode selector (Mono/Stereo/Cross/Pong) is "
+                "hardware-confirmed at 4 tested points (0/42/85/127) - the exact boundaries "
+                "between them aren't independently verified. All three delay effects have a "
+                "\"Fine\" on/off control with no known CC anywhere - not included; still "
+                "unresolved (see EffectDefinitions.cpp). Confirmed 2026-07-24: Tape Echo's other "
+                "controls (including the corrected Expanded Delay switch) all work correctly. No "
+                "live readback.",
+            },
+            {
+                "FX1",
+                63, // "FX1 On/Off"
+                { 20, 42, 60, 77, 116, 117, 118, 119, 5, 9, 12, 26, 29, 30 }, // "FX1 Setting 1-14"
+                // Confirmed on real hardware (2026-07-24): FX1/FX2 can hold these effects, plus a
+                // few already mapped elsewhere. Order matches the on-unit list the user confirmed:
+                // C1 Chor/Vib, Multi Chorus, Flanger, Vibe Phaser, Orange Phaser, Roto Speaker,
+                // Graphic EQ, Para EQ, Gray Comp, Dyn3 Comp.
+                { 11, 39, 40, 88, 89, 90, 69, 70, 35, 46, 34, 71, 75, 76, 77, 33, 50, 78, 79, 32, 85, 86 },
+                11, // C1 Chor/Vib
+                "FX1/FX2 aren't free-form - they only host this fixed effect list (confirmed "
+                "2026-07-24), sharing the same `EffectDefinitions` entries the Mod slot and "
+                "Graphic EQ already use, just wired to a different CC range here. Gray Compressor, "
+                "Dyn3 Compressor, and Para EQ have no separate native slot on the unit at all - "
+                "FX1/FX2 is the only place they're controllable, and their real param order was "
+                "reconstructed via CC-to-Setting-N lookup, same method as Delay. Para EQ has a "
+                "genuine gap at Setting 3 - the \"(unused)\" control does nothing on real hardware, "
+                "not a bug. Vibe Phaser's FX1/FX2 CCs are extrapolated, not directly documented in "
+                "the manual (unlike Chorus/Vibrato, Flanger, and Orange Phaser, whose FX1/FX2 order "
+                "exactly matches their Mod-slot order - confirmed on real hardware the same pattern "
+                "holds for Vibe Phaser too, so its existing Mod-slot param order/CCs are reused "
+                "as-is here). None of this is hardware-tested yet. No live readback.",
+            },
+            {
+                "FX2",
+                86, // "FX2 On/Off"
+                { 113, 114, 115, 96, 97, 98, 99, 37, 46, 47, 58, 109, 110, 70 }, // "FX2 Setting 1-14"
+                { 11, 39, 40, 88, 89, 90, 69, 70, 35, 46, 34, 71, 75, 76, 77, 33, 50, 78, 79, 32, 85, 86 },
+                11, // C1 Chor/Vib
+                "Same effect list and real param data as the FX1 slot - see its note for the full "
+                "explanation (Gray Compressor/Dyn3 Compressor/Para EQ are FX1/FX2-only; Para EQ's "
+                "\"(unused)\" control does nothing on real hardware; Vibe Phaser's CCs here are "
+                "extrapolated from its Mod-slot data, not directly documented). None of this is "
+                "hardware-tested yet. No live readback.",
+            },
         };
         return configs;
     }
@@ -102,6 +154,8 @@ EffectEditorComponent::EffectEditorComponent (Rack::RackController& controllerTo
     addAndMakeVisible (effectChooserLabel);
     addAndMakeVisible (effectSelector);
     addAndMakeVisible (noteLabel);
+    addAndMakeVisible (paramsViewport);
+    paramsViewport.setViewedComponent (&paramsContent, false); // false: we own paramsContent
 
     const auto& slots = slotConfigs();
     for (int i = 0; i < (int) slots.size(); ++i)
@@ -134,16 +188,28 @@ void EffectEditorComponent::resized()
 
     area.removeFromTop (12);
 
+    // paramsViewport gets whatever's left; paramsContent is sized to fit its actual row count
+    // (bypass + one row per param) so it scrolls instead of clipping/overlapping when an effect
+    // has more rows than the visible area holds (e.g. Para EQ's 14 real params).
+    paramsViewport.setBounds (area);
+
+    constexpr int rowHeight = 36; // 30 row + 6 spacing, matching the row layout below
+    int rowCount = (bypassToggle != nullptr ? 1 : 0) + (int) paramControls.size();
+    int contentWidth = paramsViewport.getWidth() - paramsViewport.getScrollBarThickness();
+    paramsContent.setSize (juce::jmax (contentWidth, 0), rowCount * rowHeight);
+
+    auto contentArea = paramsContent.getLocalBounds();
+
     if (bypassToggle != nullptr)
     {
-        auto row = area.removeFromTop (30);
+        auto row = contentArea.removeFromTop (30);
         bypassToggle->setBounds (row.reduced (2));
-        area.removeFromTop (6);
+        contentArea.removeFromTop (6);
     }
 
     for (auto& pc : paramControls)
     {
-        auto row = area.removeFromTop (30);
+        auto row = contentArea.removeFromTop (30);
         pc.label->setBounds (row.removeFromLeft (150).reduced (2));
 
         if (pc.slider != nullptr)
@@ -153,7 +219,7 @@ void EffectEditorComponent::resized()
         else if (pc.combo != nullptr)
             pc.combo->setBounds (row.reduced (2));
 
-        area.removeFromTop (6);
+        contentArea.removeFromTop (6);
     }
 }
 
@@ -205,7 +271,7 @@ void EffectEditorComponent::rebuildForSelectedEffect()
 
     auto bypassCc = slot->bypassCc;
     bypassToggle = std::make_unique<juce::ToggleButton> ("Bypass");
-    addAndMakeVisible (*bypassToggle);
+    paramsContent.addAndMakeVisible (*bypassToggle);
     bypassToggle->onClick = [this, bypassCc]
     {
         bool bypassed = bypassToggle->getToggleState();
@@ -224,12 +290,12 @@ void EffectEditorComponent::rebuildForSelectedEffect()
         pc.kind = param.kind;
         pc.ccNumber = cc;
         pc.label = std::make_unique<juce::Label> (juce::String(), param.label);
-        addAndMakeVisible (*pc.label);
+        paramsContent.addAndMakeVisible (*pc.label);
 
         if (param.kind == ParamKind::knob)
         {
             pc.slider = std::make_unique<juce::Slider>();
-            addAndMakeVisible (*pc.slider);
+            paramsContent.addAndMakeVisible (*pc.slider);
 
             pc.slider->setRange (param.minValue, param.maxValue, param.step);
             pc.slider->setValue ((param.minValue + param.maxValue) / 2.0, juce::dontSendNotification);
@@ -245,7 +311,7 @@ void EffectEditorComponent::rebuildForSelectedEffect()
         else if (param.kind == ParamKind::toggle)
         {
             pc.toggle = std::make_unique<juce::ToggleButton>();
-            addAndMakeVisible (*pc.toggle);
+            paramsContent.addAndMakeVisible (*pc.toggle);
 
             auto* togglePtr = pc.toggle.get();
             pc.toggle->onClick = [this, cc, togglePtr]
@@ -257,7 +323,7 @@ void EffectEditorComponent::rebuildForSelectedEffect()
         else // selector
         {
             pc.combo = std::make_unique<juce::ComboBox>();
-            addAndMakeVisible (*pc.combo);
+            paramsContent.addAndMakeVisible (*pc.combo);
 
             // ComboBox item IDs must be > 0, but option values (e.g. Sync's "None" = 0) can be 0,
             // so item IDs are the option's value shifted up by 1 and shifted back down on read.

@@ -100,9 +100,15 @@ placement CCs, not confirmation of the knobs themselves.)
 - **BBD Delay**: Bypass=28, Delay=62, Sync=33, Mix=85, Feedback=35, Input Level=87, Mod=34,
   Depth=48, Noise=55, Expanded Delay=49.
 - **Dyn Delay**: Bypass=28, Sync=33, L/R Ratio=34, Feedback=35, Hi-Cut=48, Lo-Cut=49, Width=55,
-  Env Mod Rate=59, Delay=62, EM Feedback=72, EM Mix=73, Mix=85, Mode=87
-  (Mode: 0-63="Chorus", 64-127="Vibrato" per the manual text — likely a copy-paste label error in
-  the manual itself, since this is a delay effect, not modulation; flagged, not corrected here).
+  Env Mod Rate=59, Delay=62, EM Feedback=72, EM Mix=73, Mix=85, Mode=87 (Mode: a 4-way selector -
+  Mono/Stereo/Cross/Pong feedback routing, confirmed by the Chapter 3 "Exploring Rigs" description
+  and the Chapter 9 table's own "(chooses between four delay modes)" annotation. **Correction**:
+  an earlier version of this note wrongly attributed a "(0-63=Chorus:64-127=Vibrato)" annotation to
+  this field - that annotation actually belongs to BBD Delay's own "Mod" param, a real 2-way
+  Chorus/Vibrato toggle, per its own Chapter 3 description ("Mod Switches the modulation effect
+  between Vibrato...and Chorus"). Both got printed in the same trailing annotation cluster due to
+  the 2-column PDF layout, same flattening issue noted elsewhere in this file. No CC-range
+  breakdown exists anywhere for Mode's 4 options, unlike Roto Speaker's/Eleven SR's selectors.
 - **Tape Echo** (= our "Tape Delay"): Bypass=28, Delay=62, Sync=33, Mix=85, Feedback=35,
   Rec Level=87, Head=34, Wow=48, Hiss=55, Expanded Delay=49.
 

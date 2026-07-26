@@ -64,9 +64,10 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
     device-confirmed reply, not an optimistic guess), Tap Tempo (a single momentary button — one
     click, one tap), and FX Loop (Bypass + Send/Return/Mix knobs).
   - **Effect Editor** — live per-effect parameter editing over MIDI CC, driven by
-    `EffectDefinitions`. A **Slot** picker (Distortion / Wah / Mod / Reverb) followed by an **Effect**
-    picker scoped to whichever models actually have real decoded parameters for that slot, then
-    a Bypass toggle and one control per knob/switch/selector, sent live as you move them. No live
+    `EffectDefinitions`. A **Slot** picker (Distortion / Wah / Mod / Reverb / Delay / FX1 / FX2)
+    followed by an **Effect** picker scoped to whichever models actually have real decoded
+    parameters for that slot, then a Bypass toggle and one control per knob/switch/selector, sent
+    live as you move them, in a scrollable area (some effects have up to 14 controls). No live
     readback (MIDI CC has no query mechanism) and no auto-detection of what's actually loaded in
     the unit — you tell it via the dropdowns. Deliberately doesn't cover every slot; see
     [implementation-plan.md](implementation-plan.md) Milestone 5 for exactly what's covered and

@@ -520,6 +520,141 @@ on the whole unit, not several selectable models - so both were added directly t
 `RigGlobalsComponent` alongside Main Volume/Tuner instead, using their fixed CCs (not a "Setting N"
 positional scheme). Not yet hardware-tested. Delay and FX1/FX2 remain open - see Open Items.
 
+**Fifteenth round: Delay added to `EffectEditorComponent` - BBD Delay and Tape Echo fully, Dyn
+Delay only partially.** The CC data existed already (see "Second manual revision found" above), but
+had been deliberately deferred because Chapter 9's print order for Delay doesn't follow ascending
+Setting-N/CC order the way every other category does. Resolved the true order by looking up each
+named param's CC against the confirmed generic "Delay Setting N" table (Setting1=62, 2=33, 3=35,
+4=85, 5=87, 6=34, 7=48, 8=49, 9=55).
+
+Cross-referencing Chapter 3's "Exploring Rigs" plain-English descriptions (not just the Chapter 9
+CC table) turned out to matter for getting each param's real *type* right, not just its order -
+without it, at least two params would have been wrongly modeled as knobs: BBD Delay's "Mod" is
+described as "Switches the modulation effect between Vibrato...and Chorus" (a toggle, same
+Chorus/Vibrato convention as C1 Chor/Vib's own Mode switch), and both BBD Delay's "Noise" and Tape
+Echo's "Hiss" are explicitly described as toggle switches. Sync is modeled as the same shared
+tempo-sync selector as everywhere else - Dyn Delay's own description confirms it explicitly
+("Ranges from OFF...to a variety of rhythmic note values").
+
+**BBD Delay and Tape Echo are fully modeled** (Bypass + all 9 real params each). **Dyn Delay is
+only partially modeled** (Bypass, Delay, Sync, Feedback, Mix) - its own description goes on to
+describe a "Mode" selector (Mono/Stereo/Cross/Pong routing options) plus several more real,
+well-described params after it (L/R Ratio, Hi-Cut, Lo-Cut, Width, Env Mod Rate, EM Feedback, EM
+Mix), but the manual gives **no CC-range breakdown at all** for Mode's 4 options (unlike Roto
+Speaker's or Eleven SR's selectors, which at least had a rough range table to start reconstructing
+from). Since the positional CC mechanism can't skip a slot, guessing Mode's ranges wrong would
+silently misalign every param after it onto the wrong CC - so, consistent with how Wah's VxCr and
+the original Reverb Type gaps were handled, this stops at Mix rather than guess. "Expanded Delay"
+(BBD Delay/Tape Echo, Setting8) has a confirmed CC but no Chapter 3 description at all, so its real
+type (knob vs. switch) is unconfirmed - modeled as a knob, the safer default when uncertain.
+
+None of Delay is hardware-tested yet.
+
+**Sixteenth round: two more Delay corrections.** User feedback: (1) "Expanded Delay" is confirmed
+an on/off switch, not a knob - **fixed** in `EffectDefinitions.cpp` (both BBD Delay and Tape Echo).
+(2) All three delay effects have a "Fine" on/off control the user doesn't yet know the function of
+- this matches the "Fine" control described under Dyn Delay's own Chapter 3 write-up ("Toggles
+finer control of delay time in or out. Toggled by SW2 in page one of the controls"), which turns
+out to be shared across all three delay types, not Dyn-Delay-specific as its placement in the text
+implied. **Still no confirmed CC for it anywhere in the manual.** Leading hypothesis, not yet
+verified: BBD Delay and Tape Echo only use CCs for Setting1-9 out of the 14 slots the generic
+"Delay Setting N" table has (Setting10-14 = CC59/72/73/74/31 are unused by either) - "Fine" is a
+plausible candidate for Setting10/CC59, the next available slot, on those two effects at least.
+Needs a hardware check (send CC 59 at 0 and 127 via the Diagnostics tab while a delay effect is
+loaded, watch if Fine toggles) before encoding it - not added to code yet.
+
+**Seventeenth round: Tape Echo confirmed fully working (Expanded Delay fix included); Dyn Delay's
+Mode confirmed and the rest of that effect completed; CC 59 ruled out for Fine.** User tested
+CC 59 (the "Fine" hypothesis above) with no effect - **ruled out**. It turns out CC 59 wasn't
+actually free to begin with: it's Dyn Delay's own real "Env Mod Rate" control, so it was never a
+clean guess. Fine's CC remains unknown; since it's shared across all three delay types but no
+single Setting-N slot is unused by all three simultaneously, it likely has its own dedicated CC
+outside this whole numbering scheme, or may not be MIDI-addressable at all (the manual describes
+it as toggled by a physical "SW2" switch, hinting at a front-panel/display-only control). Left
+unresolved - see Open Items.
+
+Also confirmed: Tape Echo's controls (Delay/Sync/Feedback/Mix/Rec Level/Head/Wow/Hiss, plus the
+just-fixed Expanded Delay) all work correctly on real hardware - what looked like "missing"
+controls in an earlier report was Dyn Delay's deliberately-partial modeling, not a regression.
+
+User also swept Dyn Delay's Mode (CC 87) at 0/42/85/127 and got Mono/Stereo/Cross/Pong in that
+exact order - **confirmed**. This unblocked the rest of Dyn Delay's real, Chapter-3-described
+params (Ratio, Hi-Cut, Lo-Cut, Width, Em Rate, Em Feedback, Em Mix - all plain knobs), now added.
+**Dyn Delay is fully modeled.** The exact range boundaries between Mode's 4 values are still not
+independently confirmed - only the 4 tested points are hardware-verified, same caveat as Roto
+Speaker's/Eleven SR's selectors.
+
+**All of Delay (BBD Delay, Tape Echo, Dyn Delay) is now fully modeled**, except Fine (all three)
+and Expanded Delay's exact CC-range boundary, unconfirmed either. This slot is now hardware-tested
+for Tape Echo end-to-end; BBD Delay and Dyn Delay's knobs are proven correct only via the shared
+CC-mapping mechanism and Dyn Delay's own Mode sweep, not independently retested control-by-control.
+
+**Eighteenth round: FX1/FX2 unblocked - they're not free-form after all.** User checked the real
+unit and found FX1/FX2 only ever host a **fixed** effect list, resolving the core blocker that had
+kept these slots out of scope since Milestone 5 began: C1 Chor/Vib, Multi Chorus, Flanger, Vibe
+Phaser, Orange Phaser, Roto Speaker (the same 6 Mod-slot effects), plus Graphic EQ, Para EQ, Gray
+Compressor, and Dyn3 Compressor.
+
+Re-examining the manual's own "(as FX1)"/"(as FX2)" CC lists for these effects surfaced two more
+corrections, both caught before hardware testing:
+- **Multi Chorus's "Width" and "Lo Cut" were in the wrong order** in the Mod slot's own definition.
+  Cross-checking against FX1's well-established, independently-confirmed CC table showed Width
+  landing on the lower-numbered Setting slot and Lo Cut on the higher one - the opposite of how the
+  manual's own *named* param order lists them. Same "named order != true positional order" pattern
+  as Delay. Fixed in `EffectDefinitions.cpp` (affects the Mod slot too, not just FX1/FX2).
+- **Vibe Phaser has no documented FX1/FX2 CC data at all**, unlike every other Mod-slot effect -
+  even though the user confirmed the real unit can place it there. Initially excluded from the
+  FX1/FX2 dropdown rather than guess.
+
+**Nineteenth round: Vibe Phaser added to FX1/FX2 after all.** User feedback: Vibe Phaser is
+present in FX1/FX2 with the same controls as the Mod slot (Volume, Depth, Rate, Sync, Chorus/
+Vibrato switch). Rather than the manual simply lacking this documentation, the other three
+Mod-slot effects with confirmed FX1/FX2 data (Chorus/Vibrato, Flanger, Orange Phaser) all showed
+their FX1/FX2 param order exactly matches their Mod-slot order, just wired to different CCs - a
+consistent enough pattern across 3 effects to extrapolate the same for Vibe Phaser with reasonable
+confidence. Added using its existing Mod-slot param order/CCs unchanged (no new `EffectDefinitions`
+work needed - the data model was already complete and correctly ordered). **This one CC mapping is
+extrapolated, not directly documented** - flagged as such in the FX1/FX2 note text, unlike the
+other effects in this slot which have their own explicit manual CC data.
+
+Promoted three previously name-only effects using the same CC-to-Setting-N reconstruction as Delay:
+**Gray Compressor** (Bypass, Sustain, Level), **Dyn3 Compressor** (renamed from ElevenHack's
+internal "Dyn Compressor" - Bypass, Threshold, Attack, Release, Gain, Ratio, Knee), and **Para EQ**
+(Bypass + 13 real EQ-band params). Unlike every other effect category, none of these three (nor
+Graphic EQ) has a dedicated native slot on the unit at all - FX1/FX2 is the *only* place they're
+controllable. Para EQ has a genuine gap at Setting3 (no real param uses it) - modeled as an explicit
+"(unused)" placeholder rather than skipped outright, since skipping would misalign every param
+after it; moving that control does nothing on real hardware, which is expected, not a bug.
+
+Added two new slots, "FX1" and "FX2", to `EffectEditorComponent` - same pattern as every other slot,
+reusing the existing `EffectDefinitions` entries (Chorus/Vibrato, Multi Chorus, Flanger, Orange
+Phaser, Roto Speaker, Graphic EQ all already existed; only the 3 compressor/EQ effects above needed
+promoting) with FX1/FX2's own bypass/Setting-N CCs substituted in. None of this is hardware-tested
+yet.
+
+**Also fixed while implementing this**: some effects (Para EQ has 14 real params) have more control
+rows than reliably fit in the app window regardless of size - `EffectEditorComponent`'s param list
+is now inside a scrollable `juce::Viewport` rather than a fixed-height area, so this scales to any
+number of params going forward instead of silently clipping/overlapping off-screen.
+
+**Twentieth round: Para EQ has 2 more real controls the manual never documented - "L Type" and
+"H Type".** User feedback, read directly off the unit's screen with Para EQ loaded in FX1: the
+real control list is Gain/Freq/Q/**Type** per outer band (L, H - Type options Shelf/Peak/HP6/HP12/
+HP24/Notch for L, Shelf/Peak/LP6/LP12/LP24/Notch for H), plus Gain/Freq/Q (no Type) for each inner
+band (LM, HM), plus Output - 14 real controls total, confirmed to be exactly the 13 already coded
+(cross-verified against the manual's own explicit CC-to-name pairing, unaffected by this finding)
+plus these 2 new Type selectors, neither of which the manual's Chapter 9 CC table documents at all.
+
+Important distinction: the on-screen band-grouped order the user described (L block, Output, LM
+block, HM block, H block) is a **display** order, not necessarily the internal CC-Setting-N order
+`EffectEditorComponent`'s positional mechanism depends on - so the existing 13 params were *not*
+reordered to match it, only the new Type controls need placing.
+
+Tested the one known-unused slot (Setting3, CC 60 in FX1) as a candidate for one of the two Type
+controls - **no effect on either Type control**. Ruled out. Neither Type control has a known CC.
+**Deferred** - not blocking anything else, since FX1/FX2's other 9 effects are unaffected; Para EQ
+stays at its current 13-real-param + 1-placeholder state until there's a real lead on the Type CCs.
+
 ## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
 
 See [project-overview.md](project-overview.md) "Prior Art Found" section for the full writeup.
@@ -581,8 +716,51 @@ Summary retained here for quick reference:
       several names don't obviously match anything in our list (Black SR, Black Mini, J45, MS-30,
       RB01b...). Needs dedicated reconciliation - likely a real hardware capture of the Amp/Cab
       parameter value - before an Amp tone-knob editor can be built. See the reference doc above.
-- [ ] **New (2026-07-24)**: real per-knob Delay data exists in the official manual (BBD/Dyn/Tape
-      Echo, all fully named) but its printed order doesn't follow ascending Setting-N/CC order the
-      way every other effect category does, unlike Amp/Distortion/Mod/Reverb — reconstructing the
-      true Setting-N order needs more care than a direct transcription. Captured in the reference
-      doc but not yet implemented in `EffectDefinitions`/`EffectEditorComponent`.
+- [x] Real per-knob Delay data existed in the official manual (BBD/Dyn/Tape Echo) but its printed
+      order didn't follow ascending Setting-N/CC order the way every other effect category does —
+      **resolved (2026-07-24)**: reconstructed the true order by looking up each named param's CC
+      against the confirmed generic "Delay Setting N" table. BBD Delay and Tape Echo are now fully
+      modeled; see "fifteenth round" above.
+- [x] Dyn Delay's "Mode" selector (Mono/Stereo/Cross/Pong) had no CC-range breakdown anywhere in
+      the manual, unlike Roto Speaker's/Eleven SR's selectors, blocking the rest of that effect's
+      real params — **resolved (2026-07-24)**: hardware-swept CC 87 at 0/42/85/127, confirmed
+      Mono/Stereo/Cross/Pong in that exact order. Dyn Delay is now fully modeled (Ratio, Hi-Cut,
+      Lo-Cut, Width, Em Rate, Em Feedback, Em Mix all added) — see "seventeenth round" above. The
+      exact boundaries between the 4 tested points are still not independently confirmed.
+- [x] "Expanded Delay" (BBD Delay/Tape Echo, CC 49/Setting8) had a confirmed CC but no Chapter 3
+      description anywhere, so its type was unconfirmed — **resolved (2026-07-24)**: confirmed an
+      on/off switch, not a knob. Fixed in `EffectDefinitions.cpp`; also hardware-confirmed working
+      end-to-end on Tape Echo.
+- [ ] All three delay effects (BBD Delay, Tape Echo, Dyn Delay) have a "Fine" on/off control with
+      no confirmed CC anywhere in the manual — CC 59 tested and **ruled out** (2026-07-24; it's
+      actually Dyn Delay's own real "Env Mod Rate", never a clean guess to begin with). No further
+      hypothesis - may have its own dedicated CC outside this numbering scheme entirely, or may not
+      be MIDI-addressable at all (described as toggled by a physical "SW2" switch in the manual).
+- [ ] BBD Delay and Dyn Delay's individual knobs aren't independently hardware-tested yet - only
+      Tape Echo has been confirmed control-by-control (plus Dyn Delay's own Mode sweep).
+- [x] FX1/FX2 were blocked on not knowing which effect family a given rig assigns to those flexible
+      slots — **resolved (2026-07-24)**: user checked the real unit and found FX1/FX2 only ever
+      host a fixed effect list (the 6 Mod-slot effects, plus Graphic EQ/Para EQ/Gray Compressor/
+      Dyn3 Compressor), not an open-ended assignment. Both slots now added to
+      `EffectEditorComponent` — see "eighteenth round" above. Vibe Phaser is now included too
+      (added "nineteenth round") using its Mod-slot CCs extrapolated, not directly documented in
+      the manual for this context. None of FX1/FX2 is hardware-tested yet.
+- [ ] "Fine" being present on all three delay types was the trigger for re-checking Multi Chorus's
+      Width/Lo Cut order via FX1's CC table, which turned out to be swapped from what was
+      originally coded for the Mod slot — fixed, but not independently hardware-retested since.
+- [ ] Para EQ has 2 real controls the manual never documents at all — "L Type" and "H Type"
+      (confirmed on real hardware 2026-07-24 - see "twentieth round" above). Neither has a known
+      CC; the one candidate tested (CC 60/Setting3) was ruled out for both. Deferred - not blocking
+      anything else in FX1/FX2.
+- [ ] **New (2026-07-24)**: decode the Bulk Rig payload (977 bytes after 7-bit decoding, confirmed
+      working via `RackController::requestBulkRig()` - see "second round" above and
+      `docs/samples/bulk-rig-sample-2026-07-24.txt`) into per-effect-slot/per-parameter values, so
+      the app can read what's actually loaded on the unit instead of requiring manual selection in
+      `EffectEditorComponent`. Genuinely undecoded territory, larger in scope than anything cracked
+      so far (Rig Description was 34 bytes/11 tuples by comparison). Most promising unexplored lead:
+      ElevenHack's `tfx/TfxParser.java` (see the still-deferred `.tfx` parser item) almost certainly
+      documents the same "whole rig" byte structure for local file save/load - reading that first
+      would likely beat reverse-engineering the Bulk Rig bytes from scratch via diffing. Also worth
+      checking whether the Rig Description tuple structure is a subset/index into this same
+      per-slot layout. See docs/implementation-plan.md "Not yet scheduled / parked" for the mirrored
+      entry. Not yet scoped into concrete steps.

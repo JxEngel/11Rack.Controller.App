@@ -8,22 +8,24 @@
 #include <vector>
 
 // Per-effect parameter editing screen (Milestone 5), generalized across the slots where we have
-// both a CC mapping and real per-knob data in EffectDefinitions: Distortion, Wah, Mod, and Reverb.
-// The CC "Setting N" positional mapping is hardware-confirmed for knobs (Distortion, 2026-07-24 -
-// see docs/protocol-spec.md "seventh round": CC 27 moved the Overdrive knob of a loaded "Green JRC
-// Disto", exactly matching EffectDefinitions' knob order). Mod and Reverb's real parameter data
-// (including the Chorus/Vibrato and Vibe Phaser param order/CCs, and Reverb's Mix/Decay/Tone/
-// Pre-Delay) comes from the official Eleven Rack User Guide, Chapter 9 - not yet confirmed against
-// real hardware, called out in each slot's note text rather than presented as confirmed.
+// both a CC mapping and real per-knob data in EffectDefinitions: Distortion, Wah, Mod, Reverb,
+// Delay, FX1, and FX2. The CC "Setting N" positional mapping is hardware-confirmed for knobs
+// (Distortion, 2026-07-24 - see docs/protocol-spec.md "seventh round": CC 27 moved the Overdrive
+// knob of a loaded "Green JRC Disto", exactly matching EffectDefinitions' knob order). Most other
+// slots' real parameter data comes from the official Eleven Rack User Guide, Chapter 9 - not all
+// of it is confirmed against real hardware yet, called out in each slot's note text rather than
+// presented as uniformly confirmed.
 //
-// Delay and the Amp's tone knobs are deliberately NOT included here yet. The official manual does
-// have real per-knob data for both (BBD/Dyn/Tape Delay; 16 named amp models each with their own
-// tone-knob labels) - see docs/protocol-spec.md - but Delay's CC-to-Setting-N order needs careful
-// reconstruction (the manual's print order isn't the real Setting-N order), and Amp's data is
-// shaped differently (one effect ID with 16 selectable models, not 16 separate effect IDs), which
-// doesn't fit this component's current "pick an effect ID from a list" pattern. FX1/FX2 are also
-// omitted - EffectDefinitions doesn't record which effect families a given rig actually assigns to
-// those slots. See docs/implementation-plan.md Milestone 5 and docs/protocol-spec.md "Open Items".
+// FX1/FX2 host a fixed effect list, not an arbitrary one (confirmed on hardware 2026-07-24) - the
+// same 6 Mod-slot effects plus Graphic EQ/Para EQ/Gray Compressor/Dyn3 Compressor, the latter four
+// having no separate native slot on the unit at all. Vibe Phaser is excluded from FX1/FX2
+// specifically - no documented CC data for it in that context, despite being placeable there.
+//
+// The Amp's tone knobs are still NOT included. The official manual has real per-knob data (16
+// named amp models each with their own tone-knob labels) - see docs/protocol-spec.md - but Amp's
+// data is shaped differently (one effect ID with 16 selectable models, not 16 separate effect
+// IDs), which doesn't fit this component's current "pick an effect ID from a list" pattern. See
+// docs/implementation-plan.md Milestone 5 and docs/protocol-spec.md "Open Items".
 //
 // Two real limitations, both deliberate and documented rather than silently glossed over:
 //  1. There's no way to auto-detect which effect is actually loaded in a slot right now - that
@@ -62,6 +64,13 @@ private:
     juce::Label effectChooserLabel { {}, "Effect" };
     juce::ComboBox effectSelector;
     juce::Label noteLabel;
+
+    // Scrollable, since some effects (e.g. Para EQ, FX1/FX2) have up to 14 real params - more rows
+    // than reliably fit in the window regardless of size. `paramsContent` holds the actual bypass
+    // toggle + param rows and is resized to whatever height they need; `paramsViewport` clips/
+    // scrolls it within the space actually available.
+    juce::Viewport paramsViewport;
+    juce::Component paramsContent;
 
     std::unique_ptr<juce::ToggleButton> bypassToggle;
     std::vector<ParamControl> paramControls;

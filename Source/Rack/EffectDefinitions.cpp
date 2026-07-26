@@ -83,14 +83,6 @@ namespace Rack::EffectDefinitions
             }
         }
 
-        // Effect types where ElevenHack only identified the name (plus the universal Bypass
-        // switch) - the real per-effect parameters were never decoded. See the header comment on
-        // `isFullyKnown` before treating these as "no parameters."
-        void addNameOnlyGroup (std::vector<EffectDefinition>& all, std::initializer_list<int> ids, std::string name)
-        {
-            addGroup (all, ids, std::move (name), { bypass() }, /* isFullyKnown */ false);
-        }
-
         std::vector<EffectDefinition> buildAll()
         {
             std::vector<EffectDefinition> all;
@@ -241,16 +233,25 @@ namespace Rack::EffectDefinitions
             // Chorus/Vibrato's do - expected, since each effect model assigns its own knobs to the
             // shared "Setting N" CC numbers independently (as MOD: Bypass=50, Rate=61/Setting1,
             // Sync=52/Setting2, Depth=53/Setting3, Pre-Delay=54/Setting4, Mix=57/Setting5,
-            // Tri/Sine=51/Setting6, Voices=56/Setting7). Also uses two CCs (89 Lo Cut, 90 Width)
-            // outside the officially-named "Modulation Setting 1-7" list - the Mod slot's
-            // `settingCc` array in EffectEditorComponent.cpp was extended to 9 entries to reach
-            // them. Synthetic key names (ElevenHack never assigned real ones). Not yet
-            // hardware-tested.
+            // Tri/Sine=51/Setting6, Voices=56/Setting7). Also uses two CCs (89, 90) outside the
+            // officially-named "Modulation Setting 1-7" list - the Mod slot's `settingCc` array in
+            // EffectEditorComponent.cpp was extended to 9 entries to reach them.
+            //
+            // Width/Lo Cut order corrected (2026-07-24) while reconciling this effect's FX1/FX2
+            // CC data (see EffectEditorComponent.cpp's new FX1/FX2 slots): the manual's own
+            // *named* param order lists "Lo Cut" before "Width", but the FX1 CC list (a
+            // well-established, independently-cross-checked table) shows Width landing on the
+            // lower-numbered Setting slot (Setting8) and Lo Cut on the higher one (Setting9) - the
+            // opposite of print order, same "named order != true positional order" pattern already
+            // seen with Delay. Corrected here on the assumption the two extra CCs (89, 90) follow
+            // the same true relative order regardless of which slot (Mod/FX1/FX2) this effect is
+            // placed in - not independently hardware-confirmed for the Mod slot specifically.
+            // Synthetic key names (ElevenHack never assigned real ones). Not yet hardware-tested.
             addGroup (all, { 88, 89, 90 }, "Multi Chorus", {
                 bypass(), knob ("Rate", "Rate"), ccSyncSelector ("Sync", "Sync"),
                 knob ("Dpth", "Depth"), knob ("PreD", "Pre-Delay"), knob ("Mix ", "Mix"),
-                toggle ("TriS", "Tri/Sine"), knob ("Voic", "Voices"), knob ("LoCt", "Lo Cut"),
-                knob ("Widt", "Width"),
+                toggle ("TriS", "Tri/Sine"), knob ("Voic", "Voices"), knob ("Widt", "Width"),
+                knob ("LoCt", "Lo Cut"),
             });
 
             // --- Roto Speaker ---
@@ -350,13 +351,83 @@ namespace Rack::EffectDefinitions
                 bypass(), knob ("Send", "Send"), knob ("Retn", "Return"), knob ("Mix ", "Mix"),
             });
 
-            // --- Effect types ElevenHack only identified by name (real params not decoded) ---
-            addNameOnlyGroup (all, { 32 }, "Gray Compressor");
-            addNameOnlyGroup (all, { 85, 86 }, "Dyn Compressor");
-            addNameOnlyGroup (all, { 78, 79 }, "Para EQ");
-            addNameOnlyGroup (all, { 27, 48 }, "BBDDelay");
-            addNameOnlyGroup (all, { 28, 49 }, "Tape Delay");
-            addNameOnlyGroup (all, { 80, 81, 82 }, "Dyn Delay");
+            // --- Delay (3 distinct models) ---
+            // Previously name-only - promoted to (mostly) fully known. Two sources combined
+            // deliberately: the Chapter 9 CC table gives the CC numbers, but its print order
+            // does NOT match ascending Setting-N order the way every other effect category does
+            // (unlike Amp/Distortion/Mod/Reverb) - the real order below was reconstructed by
+            // looking up each named param's CC against the confirmed generic "Delay Setting N"
+            // table (Setting1=62, 2=33, 3=35, 4=85, 5=87, 6=34, 7=48, 8=49, 9=55 - see the CC table
+            // above). The Chapter 3 "Exploring Rigs" descriptions were also needed to get the
+            // right *type* per param - without them, several of these would have been wrongly
+            // modeled as knobs: BBD Delay's "Mod" is a Chorus/Vibrato toggle ("Switches the
+            // modulation effect between Vibrato...and Chorus"), and both BBD Delay's "Noise" and
+            // Tape Echo's "Hiss" are literally described as toggle switches, not knobs. Sync is
+            // modeled as the same tempo-sync selector as every other Sync control in this file -
+            // Dyn Delay's own description confirms it ("Ranges from OFF...to a variety of
+            // rhythmic note values"). None of this is hardware-tested yet.
+            addGroup (all, { 27, 48 }, "BBD Delay", {
+                bypass(), knob ("Dely", "Delay"), ccSyncSelector ("Sync", "Sync"),
+                knob ("Fdbk", "Feedback"), knob ("Mix ", "Mix"), knob ("Inpt", "Input Level"),
+                toggle ("Mod ", "Mod (Chorus/Vibrato)"), knob ("Dpth", "Depth"),
+                // Confirmed on real hardware (2026-07-24): Expanded Delay is an on/off switch, not
+                // a knob (the manual has no Chapter 3 description of it at all, so this was
+                // previously unconfirmed and modeled as a knob).
+                toggle ("ExpD", "Expanded Delay"), toggle ("Nois", "Noise"),
+            });
+            addGroup (all, { 28, 49 }, "Tape Echo", {
+                bypass(), knob ("Dely", "Delay"), ccSyncSelector ("Sync", "Sync"),
+                knob ("Fdbk", "Feedback"), knob ("Mix ", "Mix"), knob ("RecL", "Rec Level"),
+                knob ("Head", "Head"), knob ("Wow ", "Wow"),
+                toggle ("ExpD", "Expanded Delay"), // confirmed on hardware, see BBD Delay's comment
+                toggle ("Hiss", "Hiss"),
+            });
+            // Now fully modeled (2026-07-24) - Mode's CC values were confirmed on real hardware
+            // (0=Mono, 42=Stereo, 85=Cross, 127=Pong, in the same order the manual lists them),
+            // unblocking the rest of this effect's real, Chapter-3-described params (Ratio,
+            // Hi-Cut, Lo-Cut, Width, Em Rate, Em Feedback, Em Mix - all plain knobs). The exact
+            // range boundaries between the 4 Mode values are still not independently confirmed -
+            // only these specific 4 tested points are hardware-verified.
+            addGroup (all, { 80, 81, 82 }, "Dyn Delay", {
+                bypass(), knob ("Dely", "Delay"), ccSyncSelector ("Sync", "Sync"),
+                knob ("Fdbk", "Feedback"), knob ("Mix ", "Mix"),
+                selector ("Mode", "Mode", {
+                    { 0, "Mono" }, { 42, "Stereo" }, { 85, "Cross" }, { 127, "Pong" },
+                }),
+                knob ("Rato", "Ratio"), knob ("HiCt", "Hi-Cut"), knob ("LoCt", "Lo-Cut"),
+                knob ("Wdth", "Width"), knob ("EmRt", "Em Rate"), knob ("EmFb", "Em Feedback"),
+                knob ("EmMx", "Em Mix"),
+            });
+
+            // --- FX1/FX2-only effects (compression, EQ) ---
+            // Unlike Distortion/Wah/Mod/Reverb/Delay, these have no dedicated native slot on the
+            // unit at all - the manual only ever documents them "as FX1"/"as FX2", never as their
+            // own standalone CC set. Previously name-only - promoted to fully known using the
+            // official Eleven Rack User Guide, Chapter 9, with real order reconstructed via
+            // CC-to-Setting-N lookup (same method as Delay) rather than trusting print order.
+            // Not yet hardware-tested. See EffectEditorComponent.cpp's new FX1/FX2 slots.
+            addGroup (all, { 32 }, "Gray Compressor", {
+                bypass(), knob ("Sust", "Sustain"), knob ("Levl", "Level"),
+            });
+            // Renamed from ElevenHack's internal "Dyn Compressor" to match the unit's own on-screen
+            // name, "Dyn3 Compressor" (same reasoning as the Reverb renames earlier).
+            addGroup (all, { 85, 86 }, "Dyn3 Compressor", {
+                bypass(), knob ("Thrs", "Threshold"), knob ("Atck", "Attack"),
+                knob ("Rels", "Release"), knob ("Gain", "Gain"), knob ("Rato", "Ratio"),
+                knob ("Knee", "Knee"),
+            });
+            // Setting3 is genuinely unused by Para EQ (13 real params fill Settings 1-2 and 4-14,
+            // leaving a gap) - modeled as an explicit placeholder rather than skipped outright,
+            // since the positional CC mechanism can't skip a slot without misaligning everything
+            // after it. Moving this control does nothing on real hardware.
+            addGroup (all, { 78, 79 }, "Para EQ", {
+                bypass(), knob ("LGan", "L Gain"), knob ("LMGn", "LM Gain"),
+                knob ("Unus", "(unused)"),
+                knob ("HMGn", "HM Gain"), knob ("HGan", "H Gain"), knob ("Out ", "Output"),
+                knob ("LFrq", "L Freq"), knob ("LMFq", "LM Freq"), knob ("LQ  ", "L Q"),
+                knob ("LMQ ", "LM Q"), knob ("HMFq", "HM Freq"), knob ("HMQ ", "HM Q"),
+                knob ("HFrq", "H Freq"), knob ("HQ  ", "H Q"),
+            });
 
             return all;
         }

@@ -394,15 +394,87 @@ Nothing above is trusted until confirmed against the real unit:
         read back or sync. FX Loop (Bypass=107, Send=19, Return=108, Mix=88) is Bypass + 3 knobs,
         newly promoted from name-only to real params in `EffectDefinitions.cpp`. Not yet
         hardware-tested.
-      - **Still open**: Delay (BBD Delay/Dyn Delay/Tape Echo - real per-knob data exists in the
-        manual, but its print order doesn't match ascending Setting-N/CC order the way every other
-        category does, so the true order needs careful reconstruction before it's safe to
-        implement) and FX1/FX2 (still blocked on not knowing which effect family a given rig
-        assigns to those flexible slots - would need the still-unresolved Rig Description decode,
-        or a hardware capture, to unblock). See protocol-spec.md Open Items.
+      - **Still open (at the time)**: Delay (see below) and FX1/FX2 (still blocked on not knowing
+        which effect family a given rig assigns to those flexible slots - would need the
+        still-unresolved Rig Description decode, or a hardware capture, to unblock). See
+        protocol-spec.md Open Items.
+- [x] **Delay slot added (2026-07-24)** — `EffectEditorComponent`'s new "Delay" slot. The print
+      order mismatch flagged above was resolved by looking up each named param's CC against the
+      confirmed generic "Delay Setting N" table rather than reading the manual top-to-bottom.
+      **BBD Delay and Tape Echo are fully modeled** (Bypass + all 9 real params each) — cross-
+      referencing Chapter 3's plain-English descriptions (not just the Chapter 9 CC table) caught
+      two params that would have been wrongly modeled as knobs otherwise: BBD Delay's "Mod" and
+      both effects' Noise/Hiss switch are toggles, not continuous controls. **Dyn Delay is only
+      partially modeled at first** (Bypass, Delay, Sync, Feedback, Mix) - its "Mode" selector
+      (Mono/Stereo/Cross/Pong) had no CC-range data anywhere in the manual, and since the
+      positional mechanism can't skip a slot, every later real param (L/R Ratio, Hi-Cut, Lo-Cut,
+      Width, Env Mod Rate, EM Feedback, EM Mix) would have misaligned if Mode were guessed wrong -
+      left out pending a real hardware sweep, same reasoning as Wah's VxCr and the original Reverb
+      Type gaps.
+      - **Completed the same day**: user confirmed "Expanded Delay" is a switch, not a knob (fixed)
+        and hardware-tested Tape Echo control-by-control - all correct. Then swept Dyn Delay's Mode
+        (CC 87) at 0/42/85/127 and confirmed Mono/Stereo/Cross/Pong in that exact order, unblocking
+        the rest of Dyn Delay's real params (Ratio, Hi-Cut, Lo-Cut, Width, Em Rate, Em Feedback, Em
+        Mix - all now added). **Dyn Delay is now fully modeled.** A separate hypothesis for the
+        "Fine" on/off control present on all three delay types (CC 59) was tested and ruled out -
+        its CC remains unknown. Build-verified (both targets, 53 test groups pass); Tape Echo is
+        hardware-confirmed end-to-end, BBD Delay/Dyn Delay's individual knobs are not yet
+        independently retested (Dyn Delay's Mode sweep is the only direct hardware data point).
+- [x] **FX1/FX2 unblocked and added (2026-07-24)** — the core blocker (not knowing which effect
+      family a rig assigns to those slots) turned out to be a wrong assumption: the user checked
+      the real unit and found FX1/FX2 only ever host a **fixed** list - the 6 Mod-slot effects
+      (C1 Chor/Vib, Multi Chorus, Flanger, Vibe Phaser, Orange Phaser, Roto Speaker) plus Graphic
+      EQ, Para EQ, Gray Compressor, and Dyn3 Compressor.
+      - Promoted 3 more previously name-only effects (Gray Compressor, Dyn3 Compressor - renamed
+        from ElevenHack's internal "Dyn Compressor", Para EQ) using the same CC-to-Setting-N
+        reconstruction as Delay. None of these (nor Graphic EQ) have a dedicated native slot on the
+        unit at all - FX1/FX2 is the only place they're controllable. Para EQ has a genuine unused
+        slot (Setting3) modeled as an explicit "(unused)" placeholder rather than skipped, since
+        skipping would misalign every param after it.
+      - **Caught another real bug in the process**: cross-checking Multi Chorus's already-shipped
+        Mod-slot definition against FX1's independently-confirmed CC table revealed its "Width" and
+        "Lo Cut" were coded in the wrong order - same "named print order != true positional order"
+        pattern as Delay. Fixed (affects the Mod slot too, not just FX1/FX2).
+      - Vibe Phaser is excluded from FX1/FX2's dropdown - the user confirmed the real unit can
+        place it there, but the manual documents no FX1/FX2 CC data for it at all, unlike every
+        other Mod-slot effect. Still fully usable in the Mod slot itself.
+      - Added "FX1" and "FX2" slots to `EffectEditorComponent`, same pattern as every other slot,
+        just wired to FX1/FX2's own bypass/Setting-N CCs.
+      - **Also fixed while implementing this**: some effects (Para EQ has 14 real params) have more
+        rows than reliably fit in the app window at any reasonable size - the per-effect param list
+        is now inside a scrollable `juce::Viewport` instead of a fixed-height area, a real
+        deterministic layout problem caught by doing the row-height math up front, not a guess.
+      - Removed the now-fully-unused `addNameOnlyGroup()` helper and its test, since every effect
+        ID in the registry is now at least partially known - a real milestone for how far the
+        reverse-engineering has come this session.
+      - Build-verified (both targets, 55 test groups pass). **None of FX1/FX2 is hardware-tested
+        yet.**
 
 ## Not yet scheduled / parked
 
 - Python protocol-discovery logger (`mido`/`python-rtmidi`) — only needed now for gaps ElevenHack
   and the official CC chart don't cover. May end up largely unnecessary given how much Milestone 0-1
   already resolves from prior art.
+- **Decode the Bulk Rig payload into per-effect-slot/per-parameter values, so `EffectEditorComponent`
+  can auto-populate from what's actually loaded on the unit instead of requiring the user to pick
+  the slot's model and every value by hand.** This is the single biggest step toward closing the
+  "no live readback" limitation flagged in every `EffectEditorComponent` slot's note text since
+  Milestone 5 began. Added 2026-07-24 at the user's request, before scoping.
+  - **What already works**: `RackController::requestBulkRig()` is confirmed against real hardware -
+    a 1123-byte SysEx reply that 7-bit-decodes to 977 bytes (`SevenBitCodec::decodeFrom7Bits`,
+    already implemented and tested). A real sample is saved at
+    `docs/samples/bulk-rig-sample-2026-07-24.txt`.
+  - **What's missing**: nobody (not us, not ElevenHack) has ever mapped which byte ranges within
+    those 977 bytes correspond to which effect slot, or which bytes within a slot's own region
+    correspond to which parameter. This is genuinely undecoded territory - bigger in scope than
+    anything cracked so far (Rig Description was 34 bytes / 11 tuples by comparison).
+  - **Most promising lead, not yet investigated**: ElevenHack's `tfx/TfxParser.java` (referenced in
+    the still-deferred `.tfx` file parser item above) almost certainly documents the *same*
+    internal "whole rig" byte structure, just for local file save/load rather than wire transfer -
+    a rig is conceptually the same object either way. Reading that source first, before attempting
+    to reverse-engineer the Bulk Rig bytes from scratch via diffing, would likely be far faster.
+  - **Also relevant**: the Rig Description tuple structure (11 × 3-byte tuples, `[count byte] +
+    tuples`, confirmed via diffing in "fourth round" - see protocol-spec.md) is a separate, much
+    smaller SysEx reply already partially decoded - worth checking whether it's a subset/index into
+    the same per-slot structure the Bulk Rig payload uses, or a wholly independent structure.
+  - Not yet scoped into concrete steps - see protocol-spec.md Open Items for the same entry.

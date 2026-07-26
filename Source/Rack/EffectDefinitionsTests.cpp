@@ -98,14 +98,40 @@ public:
             }
         }
 
-        beginTest ("name-only effect types (e.g. Gray Compressor) are flagged isFullyKnown = false");
+        beginTest ("lookup(32) returns Gray Compressor with its 2 real params (FX1/FX2-only effect)");
         {
             auto def = EffectDefinitions::lookup (32);
             expect (def.has_value());
             if (def)
             {
-                expect (! def->isFullyKnown);
-                expectEquals ((int) def->params.size(), 1); // bypass only
+                expectEquals (juce::String (def->name), juce::String ("Gray Compressor"));
+                expect (def->isFullyKnown);
+                expectEquals ((int) def->params.size(), 3); // bypass, Sustain, Level
+            }
+        }
+
+        beginTest ("lookup(85) returns Dyn3 Compressor (renamed from ElevenHack's \"Dyn Compressor\")");
+        {
+            auto def = EffectDefinitions::lookup (85);
+            expect (def.has_value());
+            if (def)
+            {
+                expectEquals (juce::String (def->name), juce::String ("Dyn3 Compressor"));
+                expect (def->isFullyKnown);
+                expectEquals ((int) def->params.size(), 7); // bypass + 6 real params
+            }
+        }
+
+        beginTest ("lookup(78) returns Para EQ with an explicit unused-Setting3 placeholder");
+        {
+            auto def = EffectDefinitions::lookup (78);
+            expect (def.has_value());
+            if (def)
+            {
+                expectEquals (juce::String (def->name), juce::String ("Para EQ"));
+                expect (def->isFullyKnown);
+                expectEquals ((int) def->params.size(), 15); // bypass + 13 real + 1 placeholder
+                expectEquals (juce::String (def->params[3].key), juce::String ("Unus"));
             }
         }
 
