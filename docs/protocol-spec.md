@@ -50,110 +50,14 @@ order. This is the first real confirmation of the positional hypothesis, not jus
 theory — it validates the core mechanism the entire per-effect parameter editing UI (Milestone 5)
 will depend on.
 
-| CC# | Parameter | Notes |
-|-----|-----------|-------|
-| 3 | Amp Setting 8 | |
-| 4 | Wah Pedal | |
-| 5 | FX1 Setting 9 | |
-| 7 | Volume Pedal | |
-| 9 | FX1 Setting 10 | |
-| 10 | Amp Setting 6 | |
-| 11 | Multi-FX | |
-| 12 | FX1 Setting 11 | |
-| 13 | Amp Setting 1 | |
-| 14 | Amp Setting 2 | |
-| 15 | Amp Setting 3 | |
-| 16 | Amp Setting 4 | |
-| 17 | Rig Volume | |
-| 18 | Reverb Setting 1 | |
-| 19 | FX Loop Send | |
-| 20 | FX1 Setting 1 | |
-| 21 | Amp Setting 5 | |
-| 22 | Amp Setting 12 | |
-| 23 | Amp Setting 11 | |
-| 24 | Amp Setting 10 | |
-| 25 | Distortion On/Off | 0-63=Off; 64-127=On |
-| 26 | FX1 Setting 12 | |
-| 27 | Distortion Setting 1 | |
-| 28 | Delay On/Off | 0-63=Off; 64-127=On |
-| 29 | FX1 Setting 13 | |
-| 30 | FX1 Setting 14 | |
-| 31 | Delay Setting 14 | |
-| 33 | Delay Setting 2 | |
-| 34 | Delay Setting 6 | |
-| 35 | Delay Setting 3 | |
-| 36 | Reverb On/Off | 0-63=Off; 64-127=On |
-| 37 | FX2 Setting 8 | |
-| 38 | Reverb Setting 2 | |
-| 39 | Reverb Setting 4 | |
-| 40 | Reverb Setting 3 | |
-| 41 | Reverb Setting 6 | |
-| 42 | FX1 Setting 2 | |
-| 43 | Wah On/Off | 0-63=Off; 64-127=On |
-| 44 | Amp Setting 13 | |
-| 45 | Amp Setting 14 | |
-| 46 | FX2 Setting 9 | |
-| 47 | FX2 Setting 10 | |
-| 48 | Delay Setting 7 | |
-| 49 | Delay Setting 8 | |
-| 50 | Modulation On/Off | 0-63=Off; 64-127=On |
-| 51 | Modulation Setting 6 | |
-| 52 | Modulation Setting 2 | |
-| 53 | Modulation Setting 3 | |
-| 54 | Modulation Setting 4 | |
-| 55 | Delay Setting 9 | |
-| 56 | Modulation Setting 7 | |
-| 57 | Modulation Setting 5 | |
-| 58 | FX2 Setting 11 | |
-| 59 | Delay Setting 10 | |
-| 60 | FX1 Setting 3 | |
-| 61 | Modulation Setting 1 | |
-| 62 | Delay Setting 1 | |
-| 63 | FX1 On/Off | 0-63=Off; 64-127=On |
-| 64 | Tap Tempo | 64-127 = a tap |
-| 69 | Tuner On/Off | 0-63=Off; 64-127=On |
-| 70 | FX2 Setting 14 | |
-| 71 | Cab Sim On/Off | 0-63=Off; 64-127=On |
-| 72 | Delay Setting 11 | |
-| 73 | Delay Setting 12 | |
-| 74 | Delay Setting 13 | |
-| 75 | Volume Pedal On/Off | 0-63=Off; 64-127=On |
-| 76 | Reverb Setting 5 | |
-| 77 | FX1 Setting 4 | |
-| 78 | Distortion Setting 2 | |
-| 79 | Distortion Setting 3 | |
-| 80 | Distortion Setting 4 | |
-| 81 | Distortion Setting 5 | |
-| 82 | Distortion Setting 6 | |
-| 83 | Distortion Setting 7 | |
-| 84 | Amp Setting 9 | |
-| 85 | Delay Setting 4 | |
-| 86 | FX2 On/Off | 0-63=Off; 64-127=On |
-| 87 | Delay Setting 5 | |
-| 88 | FX Loop Mix | |
-| 96 | FX2 Setting 4 | |
-| 97 | FX2 Setting 5 | |
-| 98 | FX2 Setting 6 | |
-| 99 | FX2 Setting 7 | |
-| 101 | Knob 1 | (front-panel physical knob, not effect-specific) |
-| 102 | Knob 2 | |
-| 103 | Knob 3 | |
-| 104 | Knob 4 | |
-| 105 | Knob 5 | |
-| 106 | Knob 6 | |
-| 107 | FX Loop On/Off | 0-63=Off; 64-127=On |
-| 108 | FX Loop Return | |
-| 109 | FX2 Setting 12 | |
-| 110 | FX2 Setting 13 | |
-| 111 | Amp On/Off | 0-63=Off; 64-127=On |
-| 112 | Amp Setting 7 | |
-| 113 | FX2 Setting 1 | |
-| 114 | FX2 Setting 2 | |
-| 115 | FX2 Setting 3 | |
-| 116 | FX1 Setting 5 | |
-| 117 | FX1 Setting 6 | |
-| 118 | FX1 Setting 7 | |
-| 119 | FX1 Setting 9 | *(sic — manual repeats "FX1 Setting 9" here as well as at CC5; likely a transcription error in this generic table, not a real duplicate — see "Second manual revision found" below and the Open Items entry)* |
+**The full CC# table has moved** to
+[master-control-map.md](master-control-map.md) §1 ("Generic 'Setting N' CC tables"), consolidated
+there with the per-effect real parameter mappings this doc's hardware-validation log below
+established over time. Every row of the original table here was verified present in that file
+before this section was trimmed (2026-07-26) - including the CC 101-106 "Knob 1-6" front-panel
+entries, which that verification pass caught as a gap in the master file and fixed before this
+table was removed. If you need "what CC does X control" quickly, start there; come back here for
+the reasoning behind each mapping.
 
 ## Second manual revision found — full per-effect/per-amp-model CC breakdown (2026-07-24)
 
@@ -161,11 +65,13 @@ The table above came from one manual edition (`archive.org/details/manualzilla-i
 Chapter 11). While researching the CC119 duplicate, a **different manual revision** turned up
 (Guide Part Number 9320-65073-00 REV B 06/21) with a much more detailed Chapter 9 — a real
 per-effect-model and per-amp-model CC breakdown, not just the generic "Setting N" labels above.
-Full extraction, including every amp model's real tone-knob labels and every effect's real CC
-list, is captured in
-[eleven-rack-user-guide-chapter9-midi-cc-notes.md](samples/eleven-rack-user-guide-chapter9-midi-cc-notes.md)
-(text-extracted via `pdftotext`, not visually verified against the original table layout — treat
-as high-confidence but not hardware-proven). Headline findings:
+The full effect-by-effect data this section extracted has since been incorporated into code and
+consolidated into [master-control-map.md](master-control-map.md). The raw extraction is preserved
+at [eleven-rack-user-guide-chapter9-midi-cc-notes.md](samples/eleven-rack-user-guide-chapter9-midi-cc-notes.md)
+only for the amp models (still not wired into the app - see master-control-map.md §4); everything
+else there was trimmed as redundant (2026-07-26). (Text-extracted via `pdftotext`, not visually
+verified against the original table layout — treat as high-confidence but not hardware-proven.)
+Headline findings from that extraction, still relevant as history:
 
 - **Resolves the CC119 duplicate**: it's a real, distinct CC (used alongside CC5 in the same
   effect's own CC list, e.g. Multi-Chorus's FX1 mapping) — the "duplicate of Setting 9" in the

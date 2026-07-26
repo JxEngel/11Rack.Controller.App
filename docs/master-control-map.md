@@ -83,7 +83,13 @@ These aren't effect-selectable - there's exactly one of each on the whole unit.
 | User/Factory Bank Change | 32 | toggle | 0 = User Rigs, 1 = Factory Rigs | manual | A plain 2-value toggle, **not** a general MIDI Bank Select MSB/LSB pair, despite CC 32 also being the standard Bank Select LSB controller number. |
 | Amp Bypass | 111 | toggle | 0-63=Off, 64-127=On | manual | Universal across all amp models. |
 | Amp Output | 92 | knob | 0-127 | manual | Universal across all amp models. |
-| Cab/Mic Bypass | 71 | toggle | 0-63=Off, 64-127=On | manual | Universal across all amp models. |
+| Cab/Mic Bypass | 71 | toggle | 0-63=Off, 64-127=On | manual | Also called "Cab Sim On/Off" in the original manual edition's generic CC table - same CC, naming variant. |
+| Knob 1 | 101 | knob | 0-127 | manual | Front-panel physical knob, not effect-specific. Not yet exposed in any UI component. |
+| Knob 2 | 102 | knob | 0-127 | manual | Same as above. |
+| Knob 3 | 103 | knob | 0-127 | manual | Same as above. |
+| Knob 4 | 104 | knob | 0-127 | manual | Same as above. |
+| Knob 5 | 105 | knob | 0-127 | manual | Same as above. |
+| Knob 6 | 106 | knob | 0-127 | manual | Same as above. |
 
 **Main Volume is NOT a plain CC** - it uses a separate SysEx command (`CMD_MAIN_VOLUME`, a 5-byte
 signed-value encoding via `SevenBitCodec::encodeValue`/`RackController::setMainVolume(int8_t)`).

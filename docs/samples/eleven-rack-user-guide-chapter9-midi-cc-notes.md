@@ -81,112 +81,19 @@ Per-model tone knob labels, in Setting1→N order (blank = model doesn't use tha
 
 Universal amp CCs (all models): AMP BYPASS = CC111, AMP OUTPUT = CC92, CAB/MIC BYPASS = CC71.
 
-## Effects
+## Effects (non-Amp) — superseded, see master-control-map.md
 
-All CC numbers below are as they'd be assigned when the effect is loaded into its *natural* slot
-(Distortion/Wah/Mod/Reverb/Delay). Several effect types can ALSO be loaded into the generic FX1/FX2
-slots, in which case they get a different CC set — those alternate mappings are noted inline where
-found, but are lower-confidence (see the Compression/EQ/Modulation flattened-table caveat above).
+Everything this section originally covered (Compression, Delay, Distortion, EQ, Modulation,
+Reverb, Volume Pedal/Wah, FX Loop/Tap Tempo/Tuner/Misc) has since been fully incorporated into
+`EffectDefinitions.cpp`/`EffectEditorComponent.cpp`/`RigGlobalsComponent.cpp`, cross-checked
+against real hardware where noted, and consolidated into
+[master-control-map.md](../master-control-map.md) - that file is now the current reference for all
+of it. This raw-extraction version was removed (2026-07-26) because several of its notes had gone
+stale (describing bugs already fixed - e.g. Tri Knob Disto's order, Eleven SR's Type count mystery
+- as if still open) and every data point in it was verified present in the master file first. For
+the *history* of how each of these was found/corrected, see `protocol-spec.md`'s hardware
+validation log instead - that reasoning wasn't duplicated here to begin with.
 
-### Compression
-- **Dyn3 Compressor**: Threshold, Attack, Release, Bypass, Gain, Ratio, Knee.
-  As FX1: 20, 42, 60, 63, 77, 116, 117. As FX2: 113, 114, 115, 86, 96, 97, 98.
-- **Gray Compressor**: Bypass, Sustain, Level.
-  As FX1: 63, 20, 42. As FX2: 86, 113, 114.
-(Gray Compressor's own `EffectDefinitions` entry is still name-only — this only covers the FX1/FX2
-placement CCs, not confirmation of the knobs themselves.)
-
-### Delay (print order ≠ Setting-N order — see caveat above; NOT yet used in code)
-- **BBD Delay**: Bypass=28, Delay=62, Sync=33, Mix=85, Feedback=35, Input Level=87, Mod=34,
-  Depth=48, Noise=55, Expanded Delay=49.
-- **Dyn Delay**: Bypass=28, Sync=33, L/R Ratio=34, Feedback=35, Hi-Cut=48, Lo-Cut=49, Width=55,
-  Env Mod Rate=59, Delay=62, EM Feedback=72, EM Mix=73, Mix=85, Mode=87 (Mode: a 4-way selector -
-  Mono/Stereo/Cross/Pong feedback routing, confirmed by the Chapter 3 "Exploring Rigs" description
-  and the Chapter 9 table's own "(chooses between four delay modes)" annotation. **Correction**:
-  an earlier version of this note wrongly attributed a "(0-63=Chorus:64-127=Vibrato)" annotation to
-  this field - that annotation actually belongs to BBD Delay's own "Mod" param, a real 2-way
-  Chorus/Vibrato toggle, per its own Chapter 3 description ("Mod Switches the modulation effect
-  between Vibrato...and Chorus"). Both got printed in the same trailing annotation cluster due to
-  the 2-column PDF layout, same flattening issue noted elsewhere in this file. No CC-range
-  breakdown exists anywhere for Mode's 4 options, unlike Roto Speaker's/Eleven SR's selectors.
-- **Tape Echo** (= our "Tape Delay"): Bypass=28, Delay=62, Sync=33, Mix=85, Feedback=35,
-  Rec Level=87, Head=34, Wow=48, Hiss=55, Expanded Delay=49.
-
-### Distortion (cross-validated — matches our own 2026-07-24 hardware test exactly)
-- **Green JRC Overdrive** (= our "Green JRC Disto"): Bypass=25, Drive=27, Tone=78, Level=79.
-  This is an exact match to the CC27/78/79 → Overdrive/Tone/Level hardware confirmation already in
-  protocol-spec.md's "seventh round" — strong cross-validation of both the manual and our test.
-- **Black Op Distortion**: Bypass=25, Distortion=27, Cut=78, Volume=79.
-- **DC Distortion**: Bypass=25, Distortion=27, Treble=78, Bass=79, Volume=80.
-- **Tri-Knob Fuzz** (= our "Tri Knob Disto"): Bypass=25, **Volume**=27, **Sustain**=78, Tone=79.
-  Note: this order (Volume/Sustain/Tone) DIFFERS from our current `EffectDefinitions` entry, which
-  has Sustain/Tone/Level in that order (ported from ElevenHack's own field order, unconfirmed
-  against hardware, and this effect isn't in `EffectEditorComponent`'s Distortion dropdown to begin
-  with). Flagged, not fixed — the Distortion slot's 5 offered models are 29/30/31/87/91, and 29 is
-  "Tri Knob Disto" — **this may be its own separate ordering bug**, same category as the
-  Chorus/Vibrato one already found and fixed, but not yet cross-checked param-by-param here.
-- **White Boost**: Bypass=25, Distortion=27, Treble=78, Bass=79, Volume=80.
-
-### EQ
-- **Graphic EQ**: Bypass, 100 Hz, 370 Hz, 800 Hz, 2 kHz, 3.25 kHz, Output (matches our existing
-  `EffectDefinitions` entry well).
-- **Para EQ**: Bypass, L Q, LM Q, HM Freq, L Gain, HM Q, H Freq, H Q, LM Gain, HM Gain, H Gain,
-  Output, L Freq, LM Freq (13 real params — currently name-only in `EffectDefinitions`).
-  As FX1: 63, 20, 42, 60, 77, 116, 117. As FX2: 86, 113, 114, 115, 96, 97, 98.
-  In FX1 (full list): 63, 5, 9, 12, 20, 26, 29, 30, 42, 77, 116, 117, 118, 119.
-  In FX2 (full list): 86, 37, 47, 58, 113, 109, 110, 70, 114, 96, 97, 98, 99, 46.
-
-### Modulation
-- **C1 Chorus/Vibrato** (as Mod): Bypass=50, Chorus=61, Rate=52, Sync=53, Depth=54,
-  Chorus/Vibrato toggle=57. **Already applied** to `EffectDefinitions`/`EffectEditorComponent`
-  (this fixed a real ordering bug — see EffectDefinitions.cpp comments).
-- **Flanger** (as Mod): Bypass=50, Pre-Delay=61, Depth=52, Rate=53, Sync=54, Feedback=57.
-  Still name-only in `EffectDefinitions` — not yet added to the Mod slot's dropdown.
-- **Orange Phaser** (as Mod): Bypass=50, Rate=61, Sync=52. Matches our existing entry and mapping.
-  As FX1: 63, 20, 42, 60, 77, 116. As FX2: 86, 113, 114, 115, 96, 97.
-- **Vibe Phaser** (as Mod): Bypass=50, Volume=61, Depth=52, Rate=53, Sync=54,
-  Chorus/Vibrato toggle=57. **Already applied** (previously name-only, now fully known).
-- **Multi-Chorus** (as Mod): Bypass=50, Tri/Sine=51, Sync=52, Depth=53, Pre-Delay=54, Voices=56,
-  Mix=57, Rate=61, Lo Cut=89, Width=90. Still name-only in `EffectDefinitions`.
-  As FX1: 63, 117, 42, 60, 77, 118, 116, 20, 5, 119. As FX2: 86, 98, 114, 115, 96, 99, 97, 113, 37, 46.
-- **Roto Speaker** (as Mod): Bypass=50, Speed=61, Balance=52, Type=53. Still name-only.
-  Speed is itself a 3-way range selector (Slow/Brake/Fast over 0-31/32-95/96-127), Type an 8-way
-  range selector (120/122/21H/Foam/Drum/Rover/Memphis/Wolf/Watery over uneven ranges 0-9 through
-  119-127). As FX1: 63, 20, 42, 60. As FX2: 86, 113, 114, 115.
-
-**CC119 resolution**: Multi-Chorus's FX1 list above includes CC119 as its own distinct value,
-used simultaneously with CC5 in the *same* effect's CC list (different params). This is strong
-evidence that our old generic CC table's "CC 119 = FX1 Setting 9 (*sic* — duplicate of CC 5)" open
-item was a **transcription/manual error in that earlier source**, not a real duplicate — CC119 is
-a genuine, distinct CC (most likely "FX1 Setting 8", the slot that table was missing), not a repeat
-of CC5/"FX1 Setting 9". See protocol-spec.md Open Items.
-
-### Reverb — **already applied** (Mix/Decay/Tone[/Pre-Delay], Type selector deliberately omitted)
-- **Blackpanel Spring Reverb**: Bypass=36, Mix=18, Decay=38, Tone=40.
-  As FX1: 63, 20, 42, 60, 77, 116. As FX2: 86, 113, 114, 115, 96, 97.
-- **Eleven SR** (= our "Stereo Reverb"): Bypass=36, Mix=18, Decay=38, Tone=40, Pre-Delay=39,
-  Type=76. Type is a 25-way range selector (Echo, Room, Studio, Small Room, Jazz Club, Small Club,
-  Garage, Medium Room, Tiled Room, Wood Room, Small Theater, Medium Theater, Large Theater, Rich
-  Hall, Concert Hall, Bright Hall, Church, Cathedral, Arena, Small Plate, Medium Plate, Large
-  Plate, Canyon, Supa Long, Early Reflect 1, Early Reflect 2 — 26 names actually listed, one more
-  than the 25 CC ranges given, so there's a counting mismatch somewhere in the source table itself)
-  over ranges 0-2, 3-7, 8-13, 14-18, 19-23, 24-29, 30-34, 35-39, 40-45, 46-50, 51-55, 56-61, 62-66,
-  67-71, 72-77, 78-82, 83-87, 88-93, 94-98, 99-103, 104-109, 110-114, 115-119, 120-125, 126-127.
-  Not modeled in code — see the mismatch just noted as exactly why.
-
-### Volume Pedal, Wah — cross-validated, matches our existing code
-- **Volume Pedal**: Bypass=75, Position=7.
-- **Black Wah** / **Sine Wah** (manual calls it "Shine Wah", likely a typo): Bypass=43, Position=4.
-  Confirms Wah genuinely has only ONE MIDI-controllable knob in the entire official spec — VxCr
-  isn't just "not yet found," the manual's own exhaustive list has nothing for it.
-
-### FX Loop, Tap Tempo, Tuner, Misc (rig-level, not yet modeled in EffectDefinitions)
-- **FX Loop**: Bypass=107, Send=19, Return=108, Mix=88.
-- **Tap Tempo**: CC64 (64-127 = a tap).
-- **Tuner**: Bypass=69 (matches what we already use).
-- **Multiple FX Control**: Pedal Position=11.
-- **Rig Volume**: Pedal Position=17.
-- **User/Factory Bank Change**: CC32, value 1=Factory Rigs, 0=User Rigs.
-  This is a **plain 2-value toggle**, not a generic 128-value MIDI Bank Select MSB/LSB pair as
-  originally hypothesized from observing CC0/CC32 traffic (protocol-spec.md fourth round) — see
-  Open Items, this narrows (but doesn't fully close) the rig-switching-mechanism question.
+The **Amp models** section above is the exception and is kept in full - Amp tone knobs are still
+not wired into the app at all (see master-control-map.md §4), so this remains the only place that
+data exists.
