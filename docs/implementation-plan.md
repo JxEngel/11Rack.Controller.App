@@ -586,21 +586,21 @@ Nothing above is trusted until confirmed against the real unit:
   to pick the slot's model and every value by hand. The structural decode itself is now done (see
   `BulkRigParser` above, Milestone 5) - what remains is semantic, not byte-level:
   - ~~Map the TOC's per-slot `effectId`/`category` numbering onto `Rack::EffectDefinitions`'s own
-    `effectId`/`EffectClass` values~~ - **done (2026-07-26)**: confirmed to match directly, no
-    conversion needed. Wired into `DiagnosticsComponent` (see above). Still only checked against one
-    real sample, though every data point in it corroborates independently (matches
-    `EffectDefinitions.h`'s pre-existing `AMP_CAB=12` note, matches the hardware-confirmed FX1/FX2
-    fixed effect list) - worth reconfirming against a second capture with a different slot
-    arrangement before treating it as fully proven.
+    `effectId`/`EffectClass` values~~ - **done (2026-07-26), reconfirmed (2026-07-27)**: matches
+    directly, no conversion needed. Wired into `DiagnosticsComponent` (see above). Checked against
+    two real rigs now (the original sample, plus "SLO 100" - see the slot-letter-position finding
+    just above), both fully consistent with `EffectDefinitions`.
   - Map each slot's raw field tags (`Driv`, `Levl`, `sld1`, ...) onto the matching
     `ParamDefinition::key` for that effect, in the right order.
   - Figure out the conversion from the Bulk Rig's signed-32-bit values to the 0-127 CC-scale values
     `EffectEditorComponent`'s controls use - confirmed NOT a single uniform formula (`EffectAmpCab`'s
     amp selector alone has both a compact 0-15 index AND a full-int32-range encoding for the same
     selector), so this needs real hardware sweeps per param, not a guess.
-  - Whether the lettered slot really is signal-chain position remains only weakly evidenced (one
-    real sample) - worth confirming against a second capture with a different slot order before
-    relying on it.
+  - ~~Whether the lettered slot really is signal-chain position~~ - **confirmed (2026-07-27)**:
+    compared a second real rig's ("SLO 100") independently-known real pedal order against its
+    decoded slot letters - exact match, position for position (see "twenty-second round",
+    protocol-spec.md, and the Signal Chain tab fix in Milestone 5 above). No longer just weakly
+    evidenced from one sample.
   - **Also relevant**: the Rig Description tuple structure (11 × 3-byte tuples, `[count byte] +
     tuples`, confirmed via diffing in "fourth round" - see protocol-spec.md) is a separate, much
     smaller SysEx reply already partially decoded - worth checking whether it's a subset/index into
@@ -608,3 +608,47 @@ Nothing above is trusted until confirmed against the real unit:
     ElevenHack's own `CMD_RIG_DESC` handler (`ElevenReceiver.java`) is a dead stub with no real
     parsing logic, so this can't be answered from their source either.
   - Not yet scoped into concrete steps - see protocol-spec.md Open Items for the same entry.
+- **Wire Volume Pedal, Amp/Cab, and FX Loop into `SlotParamsPanel`/`slotConfigs()`** so clicking those
+  blocks in the Signal Chain tab (and picking them in `EffectEditorComponent`) shows real controls
+  instead of the "No editable parameters mapped for this block yet" fallback. Volume Pedal's CC data
+  already exists (Bypass=75, Position=7 - see master-control-map.md §2) and is the smallest lift;
+  Amp doesn't fit `SlotConfig`'s "pick an effect ID from a list" shape (one effect ID with 16
+  selectable models, not several effect IDs - see the note in `EffectEditorComponent.h`) and Cab has
+  no independently-known parameters at all; FX Loop already has its own dedicated
+  `RigGlobalsComponent` controls (fixed CCs, not a "Setting N" slot) that could potentially be
+  reused/duplicated here instead of built fresh.
+- **Add chain-reordering UI to the Signal Chain tab.** The chain now shows each rig's real order
+  (see the "Signal-chain editor UI" and its order-bug fix, both Milestone 5 above) but isn't
+  user-editable - dragging a block around wouldn't do anything. Blocked on the same open question as
+  before: whether the unit exposes writing a new order via MIDI/SysEx at all (see protocol-spec.md
+  Open Items on the Bulk Rig/Rig Description relationship) - if not, this may end up staying
+  display-only, or become a purely local/cosmetic reorder with no real effect.
+- **Amp/Cab tone-knob editor.** Blocked on two unresolved gaps, neither attempted yet: reconciling
+  the official manual's 31+ named amp models against `EffectDefinitions::ampModelOptions()`'s 16
+  (ported from ElevenHack) - several names (Black SR, Black Mini, J45, MS-30, RB01b...) don't
+  obviously match anything in the current list - and finding cabinet/mic-position mapping, which
+  isn't documented in either source at all. See protocol-spec.md Open Items for both.
+- **Para EQ's "L Type"/"H Type" controls have no known CC.** The one candidate tested (CC 60 /
+  Setting3) was ruled out for both. Deferred - doesn't block anything else in FX1/FX2. See
+  protocol-spec.md Open Items ("twentieth round").
+- **Delay's "Fine" control has no known CC**, across all three delay effects (BBD Delay, Tape Echo,
+  Dyn Delay). CC 59 was tested and ruled out (it's actually Dyn Delay's own "Env Mod Rate"). May have
+  its own CC outside the numbering scheme entirely, or may not be MIDI-addressable at all (the manual
+  describes it as toggled by a physical "SW2" switch). See protocol-spec.md Open Items.
+- **Hardware-verification debt on already-shipped `EffectEditorComponent` slots/controls.** Only
+  Distortion's knobs and Chorus/Vibrato's knobs/Sync/Bypass/Mode toggle are independently confirmed
+  against real hardware so far. Still untested: Wah, the other 5 Mod-slot effects, Reverb, all of
+  FX1/FX2, BBD Delay's and Dyn Delay's individual knobs (only Tape Echo is fully confirmed), the
+  Multi Chorus Width/Lo Cut reorder fix, and the "CC Setting N maps positionally" hypothesis for
+  non-knob params (toggles/selectors) in general - only confirmed for knobs (Distortion) so far. See
+  protocol-spec.md Open Items for the full per-item breakdown.
+- **Rig-switching mechanism isn't fully understood.** Whether Program Change or the CC32
+  "User/Factory Bank Change" toggle can drive a rig switch on their own, vs. only the SysEx
+  `CMD_CURR_RIG_NUM` write `RackController::selectRig()` already uses (and `SignalChainComponent`'s
+  preset dropdown now calls) - relevant to how reliable rig-switching-then-decoding really is. See
+  protocol-spec.md Open Items.
+- **Minor unresolved protocol curiosities, none currently blocking anything**: what `CMD_TUNER_A`
+  (`0x41`) represents, what effect index 0 ("Eleven"/"DigiElvnELVu") actually is, what the unhandled
+  `ASYNCSET 0x03` command means, whether Rig Description's per-tuple middle byte is a stable identity
+  or just a monotonic reload counter, and which of the 2 MIDI inputs/3 MIDI outputs is "the" real
+  control port. See protocol-spec.md Open Items for each.
