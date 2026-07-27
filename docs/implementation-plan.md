@@ -449,32 +449,162 @@ Nothing above is trusted until confirmed against the real unit:
         reverse-engineering has come this session.
       - Build-verified (both targets, 55 test groups pass). **None of FX1/FX2 is hardware-tested
         yet.**
+- [x] **`BulkRigParser` — Bulk Rig payload structurally decoded (2026-07-26)**, closing the "what's
+      missing" gap the parked item below described. The byte format turned out to be fully specified
+      in ElevenHack's `tfx/TfxParser.java`/`Section.java`/`ParseUtils.java` - exactly the lead the
+      parked item flagged as "most promising, not yet investigated." Read directly from ElevenHack's
+      GitLab source (not paraphrased), then independently verified via a hand-written Python
+      reimplementation run against both ElevenHack's own `bulkdump.bin` test fixture (decodes to rig
+      name "Metal Rythm 1" with every TOC/section byte boundary matching exactly) and our own real
+      hardware capture (`docs/samples/bulk-rig-sample-2026-07-24.txt`, decodes to rig name "JCM 800")
+      before porting to C++, per this project's "prove it in Python first" discipline (same approach
+      used for `SevenBitCodec`).
+      - Format: 36-byte header (4-byte version + 4-byte header code, both raw/untransformed, + a
+        28-byte rig name built from 7 individually byte-reversed 4-char quadlets, trimmed at the
+        first NUL) → one TOC `Section` (id `'A'`) whose `byteSize` field (a multiple of 8) drives how
+        many key/value quadlet pairs follow - not a hardcoded count - giving the rig-level globals
+        (`RVol`, `Tmpo`, `FXc1`-`FXc4`, etc., plus the oddly-named-but-still-global `WorB`/`WstB`) and
+        each of 10 signal-chain slots' (letters `'C'`-`'L'`) `effectId`/`category` via `Wor<letter>`/
+        `Wst<letter>` lookups → 10 more `Section`s (ids `'C'`-`'L'`) read back-to-back with no
+        padding/count/end-marker, each holding that slot's own raw field-tag → signed-32-bit-value
+        map, terminated only by fewer than 12 bytes remaining.
+      - Shipped as `Source/Rack/BulkRigParser.h`/`.cpp`, returning a `ParsedRig` (version, header
+        code, rig name, rig-globals map, and all 10 `EffectSlot`s with `effectId`/`category`/raw
+        `params`). Takes the full F0...F7 reply frame, validates it via `SysExFrame::parse` first.
+      - 5 new tests in `BulkRigParserTests.cpp`, all against the real hardware capture (header/name,
+        all 16 rig globals including the `WorB`/`WstB` exceptions, all 10 slots'
+        `effectId`/`category`, per-slot param maps for a couple of slots, and 2 rejection cases) -
+        build-verified (61 test groups pass, both targets compile; the`ElevenRackController`
+        link step was skipped only because the app happened to be running and holding its own .exe
+        file open, unrelated to this change).
+      - **Deliberately NOT done in this pass** (structural decode only, not semantic): the TOC's
+        `effectId`/`category` numbering hasn't been reconciled against
+        `Rack::EffectDefinitions`'s own `effectId`/`EffectClass` values, the raw field tags (`Driv`,
+        `Levl`, etc.) haven't been mapped onto `ParamDefinition::key`, and the signed-32-bit values
+        haven't been calibrated against the 0-127 CC-scale values `EffectEditorComponent` already
+        uses. None of that is wired into any UI yet - `EffectEditorComponent` still requires manually
+        picking each slot's model and every value. That reconciliation is the next real step toward
+        the "no live readback" goal the parked item below described, and is intentionally left for a
+        separate, focused pass.
+- [x] **Wired `BulkRigParser` into `DiagnosticsComponent`, and fixed a real decode bug found while
+      doing it (2026-07-26)**.
+      - **Bug fix**: `RackController`'s `getBulkTfx`/`setBulkTfx` handler was 7-bit-decoding
+        `frame.params`, which `SysExFrame::parse` had already trimmed the trailing `F7` off of -
+        NOT the harmless trailing-byte difference it looked like at first glance. A byte-by-byte
+        diff of the two decodes proved excluding the `F7` shifts other decoded bytes too (first
+        mismatch always landed exactly at the start of the already-unused TOC/section tail padding
+        in both real samples checked, so it happened to be harmless in practice, but was still
+        objectively wrong and would not be safe to rely on in general). Fixed to decode
+        `rawBytes[6:]` (including the `F7`), matching `BulkRigParser`'s own logic and ElevenHack's
+        exact `Arrays.copyOfRange(msg, 6, msg.length)`. New regression test in
+        `RackControllerTests.cpp` drives the real capture through the actual `RackController`
+        pipeline end-to-end and asserts the corrected 978-byte length.
+      - **Effect/slot-type names confirmed to reconcile directly** - upgrading the "only checked
+        against one real sample" caveat in the parked item below: cross-referencing all 10 of that
+        sample's `effectId`/`category` pairs against `EffectDefinitions.cpp`'s registry, every single
+        one matches a real, already-documented effect in exactly the slot-type category expected
+        (e.g. `effectId 12`/`category 0` -> Amp/Cab, matching `EffectDefinitions.h`'s own existing
+        note that 12 is `AMP_CAB`; the two slots categorized FX1/FX2 held Chorus/Vibrato and Dyn3
+        Compressor respectively, both members of the real hardware-confirmed FX1/FX2 fixed effect
+        list). `BulkRigParser::EffectSlot`'s `effectId` doc comment updated to reflect this.
+      - `DiagnosticsComponent::onBulkRigReceived` now calls `BulkRigParser::parseDecoded()` and logs
+        the rig name and, per slot, its real effect name (`EffectDefinitions::lookup`) and slot-type
+        name (`EffectDefinitions::effectClassName`) instead of raw `effectId`/`category` numbers -
+        e.g. `C [Vol]: Volume Pedal (4 raw params)` instead of `C: effectId=38 category=2`.
+      - **Still NOT reconciled** (and this pass didn't attempt it): the raw per-param field tags
+        (`Dly `, `InLv`, `ChVb`, ...) are a genuinely different key scheme from
+        `ParamDefinition::key` (BBD Delay's live-CC key is `"Dely"`/`"Inpt"`/`"Mod "`, but its Bulk
+        Rig tag is `"Dly "`/`"InLv"`/`"ChVb"` - confirmed by direct comparison, not assumed) - so
+        per-param values are still shown as raw tags, not friendly labels. See the parked item below.
+      - Build-verified (both targets compile and link, 62 test groups pass) and manually exercised
+        by running the rebuilt app.
+- [x] **Signal-chain editor UI ported from the mockup (2026-07-27)** -
+      `docs/mockups/signal-chain-editor-concept.html` implemented as a real "Signal Chain" tab
+      (`Source/SignalChainComponent.h`/`.cpp`), added alongside "Effect Editor" (not replacing it).
+      - **V1 scope, per explicit user decisions**: chain order is fixed, not editable - the mockup
+        itself never implemented drag/reorder, and there's no known way to write a new order back
+        to the unit anyway, so it would be purely cosmetic; reordering is a follow-up once
+        device-side reordering (if it exists at all) is understood. A dedicated preset `ComboBox`
+        lives in this tab (its own `requestAllRigNames()` fetch, same mechanism
+        `RigBrowserComponent` uses) rather than reusing the Rig Browser tab, accepting a small
+        amount of duplicated fetch bookkeeping in exchange for matching the mockup's layout.
+      - **Reused, not reinvented**: extracted `SlotConfig`/`slotConfigs()` (the 7-slot CC-mapping
+        table: Distortion/Wah/Mod/Reverb/Delay/FX1/FX2) out of `EffectEditorComponent.cpp`'s
+        anonymous namespace into shared `Source/SlotConfig.h`/`.cpp`, and extracted the
+        "pick a model, edit bypass + params over MIDI CC" widget into a new reusable
+        `Source/SlotParamsPanel.h`/`.cpp` component. `EffectEditorComponent` now just wraps its
+        `slotSelector` dropdown around one embedded `SlotParamsPanel` - same CC numbers, same
+        widget types/ranges/dedup rules, same layout math, purely relocated, not rewritten.
+        `SignalChainComponent` embeds its own `SlotParamsPanel` instance, shown when a chain block
+        with a real `SlotConfig` entry is clicked (Wah/Distortion/Mod/Delay/Reverb/FX1/FX2 - not
+        expanded beyond what `EffectEditorComponent` already covers); Volume/Amp/Cab/FX Loop show a
+        "No editable parameters mapped for this block yet" fallback label, honestly reflecting
+        today's real coverage gap rather than fabricating placeholder controls.
+      - **New, genuine partial win against "no live readback"**: `SlotParamsPanel::setSlot()` now
+        takes an optional `preferredEffectId` and `knownBypass`. `SignalChainComponent` listens for
+        `onBulkRigReceived`, decodes via `BulkRigParser::parseDecoded()`, and for each chain block
+        whose category maps to a `BulkRigParser::EffectSlot` (vol/wah/mod/reverb/delay/disto/fx1/fx2
+        by `EffectClass`, ampCab covers both "amp" and "cab" - Cab still shows nothing, same as the
+        mockup, since Amp/Cab is one combined effect in `EffectDefinitions`) looks up the real
+        effect name for the block's sub-label and passes the decoded `effectId` + `bypa` (a plain
+        0/1, needs no calibration unlike per-knob values) into the editor panel when that block is
+        clicked - so which model is loaded and its bypass state ARE now readable from real hardware,
+        even though per-knob values still are not. Selecting a rig in the preset dropdown calls
+        `selectRig()` then `requestBulkRig()` to refresh the chain - noted in code as a known,
+        unworked-around race (no confirmation the unit's internal rig-switch finishes before the
+        Bulk Rig request goes out right behind it; not patched with a guessed delay).
+      - Build-verified (both targets compile and link, 62 test groups pass, main app launches with a
+        real window). Manually click-tested against the running app with real hardware connected -
+        see the block-order bug this surfaced, fixed immediately below.
+- [x] **Fixed: Signal Chain tab showed the wrong block order (2026-07-27)** - manual testing against
+      a real rig ("SLO 100") found the chain's order didn't match the unit's real pedal order, even
+      though the individual effect names were right. Root cause: `SignalChainComponent` was always
+      rendering the V1 fixed guessed order from above, never actually using the real per-rig order
+      that was already sitting in the decoded data. Comparing the user's independently-known real
+      order against the decoded slot letters confirmed `BulkRigParser::ParsedRig::slots`' existing
+      C-to-L order directly encodes real signal-chain position (see "twenty-second round",
+      protocol-spec.md) - so `updateBlockDataFromRig()` now rebuilds the chain's block order from
+      `rig.slots` directly on every Bulk Rig decode (falling back to the old guessed order,
+      `buildDefaultChain()`, only before any real decode arrives), instead of just patching
+      sub-labels into a fixed order. Also corrected an earlier modeling assumption this exposed:
+      Amp/Cab's overall position isn't fixed, only their adjacency to each other is - `ChainBlock`'s
+      `fixed` flag now applies only to Input/Output. Along the way, also fixed a display bug in
+      `DiagnosticsComponent`'s Bulk Rig log that was printing each slot's letter as its ASCII code
+      (`67` instead of `C`) via `juce::String::charToString`, which is what made the letter order
+      hard to read while diagnosing this. Build-verified (62 test groups pass, both targets link) and
+      **manually re-confirmed against the real "SLO 100" rig (2026-07-27)** - the Signal Chain tab
+      now shows the correct real order (Volume, Wah, FX2, Distortion, Amp, Cab, FX Loop, Mod, Delay,
+      FX1, Reverb).
 
 ## Not yet scheduled / parked
 
 - Python protocol-discovery logger (`mido`/`python-rtmidi`) — only needed now for gaps ElevenHack
   and the official CC chart don't cover. May end up largely unnecessary given how much Milestone 0-1
   already resolves from prior art.
-- **Decode the Bulk Rig payload into per-effect-slot/per-parameter values, so `EffectEditorComponent`
-  can auto-populate from what's actually loaded on the unit instead of requiring the user to pick
-  the slot's model and every value by hand.** This is the single biggest step toward closing the
-  "no live readback" limitation flagged in every `EffectEditorComponent` slot's note text since
-  Milestone 5 began. Added 2026-07-24 at the user's request, before scoping.
-  - **What already works**: `RackController::requestBulkRig()` is confirmed against real hardware -
-    a 1123-byte SysEx reply that 7-bit-decodes to 977 bytes (`SevenBitCodec::decodeFrom7Bits`,
-    already implemented and tested). A real sample is saved at
-    `docs/samples/bulk-rig-sample-2026-07-24.txt`.
-  - **What's missing**: nobody (not us, not ElevenHack) has ever mapped which byte ranges within
-    those 977 bytes correspond to which effect slot, or which bytes within a slot's own region
-    correspond to which parameter. This is genuinely undecoded territory - bigger in scope than
-    anything cracked so far (Rig Description was 34 bytes / 11 tuples by comparison).
-  - **Most promising lead, not yet investigated**: ElevenHack's `tfx/TfxParser.java` (referenced in
-    the still-deferred `.tfx` file parser item above) almost certainly documents the *same*
-    internal "whole rig" byte structure, just for local file save/load rather than wire transfer -
-    a rig is conceptually the same object either way. Reading that source first, before attempting
-    to reverse-engineer the Bulk Rig bytes from scratch via diffing, would likely be far faster.
+- **Reconcile the decoded Bulk Rig payload with `EffectDefinitions`/`EffectEditorComponent` so the
+  editor can auto-populate from what's actually loaded on the unit**, instead of requiring the user
+  to pick the slot's model and every value by hand. The structural decode itself is now done (see
+  `BulkRigParser` above, Milestone 5) - what remains is semantic, not byte-level:
+  - ~~Map the TOC's per-slot `effectId`/`category` numbering onto `Rack::EffectDefinitions`'s own
+    `effectId`/`EffectClass` values~~ - **done (2026-07-26)**: confirmed to match directly, no
+    conversion needed. Wired into `DiagnosticsComponent` (see above). Still only checked against one
+    real sample, though every data point in it corroborates independently (matches
+    `EffectDefinitions.h`'s pre-existing `AMP_CAB=12` note, matches the hardware-confirmed FX1/FX2
+    fixed effect list) - worth reconfirming against a second capture with a different slot
+    arrangement before treating it as fully proven.
+  - Map each slot's raw field tags (`Driv`, `Levl`, `sld1`, ...) onto the matching
+    `ParamDefinition::key` for that effect, in the right order.
+  - Figure out the conversion from the Bulk Rig's signed-32-bit values to the 0-127 CC-scale values
+    `EffectEditorComponent`'s controls use - confirmed NOT a single uniform formula (`EffectAmpCab`'s
+    amp selector alone has both a compact 0-15 index AND a full-int32-range encoding for the same
+    selector), so this needs real hardware sweeps per param, not a guess.
+  - Whether the lettered slot really is signal-chain position remains only weakly evidenced (one
+    real sample) - worth confirming against a second capture with a different slot order before
+    relying on it.
   - **Also relevant**: the Rig Description tuple structure (11 × 3-byte tuples, `[count byte] +
     tuples`, confirmed via diffing in "fourth round" - see protocol-spec.md) is a separate, much
     smaller SysEx reply already partially decoded - worth checking whether it's a subset/index into
     the same per-slot structure the Bulk Rig payload uses, or a wholly independent structure.
+    ElevenHack's own `CMD_RIG_DESC` handler (`ElevenReceiver.java`) is a dead stub with no real
+    parsing logic, so this can't be answered from their source either.
   - Not yet scoped into concrete steps - see protocol-spec.md Open Items for the same entry.

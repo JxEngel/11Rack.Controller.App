@@ -37,11 +37,15 @@ target_sources(ElevenRackController PRIVATE
     Source/RigBrowserComponent.cpp
     Source/RigGlobalsComponent.cpp
     Source/EffectEditorComponent.cpp
+    Source/SlotConfig.cpp
+    Source/SlotParamsPanel.cpp
+    Source/SignalChainComponent.cpp
     Source/Rack/SysExFrame.cpp
     Source/Rack/SevenBitCodec.cpp
     Source/Rack/EffectDefinitions.cpp
     Source/Rack/MidiTransport.cpp
     Source/Rack/RackController.cpp
+    Source/Rack/BulkRigParser.cpp
 )
 
 target_compile_definitions(ElevenRackController PRIVATE
@@ -80,6 +84,8 @@ target_sources(RackControllerTests PRIVATE
     Source/Rack/MidiTransportTests.cpp
     Source/Rack/RackController.cpp
     Source/Rack/RackControllerTests.cpp
+    Source/Rack/BulkRigParser.cpp
+    Source/Rack/BulkRigParserTests.cpp
 )
 
 target_link_libraries(RackControllerTests PRIVATE

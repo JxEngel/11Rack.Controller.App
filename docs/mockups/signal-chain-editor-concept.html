@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Signal chain editor — concept mockup</title>
+<style>
+  :root {
+    --text-primary: #1a1a1a;
+    --text-secondary: #5f5e5a;
+    --text-muted: #888780;
+    --surface-0: #f1efe8;
+    --surface-1: #f7f6f2;
+    --surface-2: #ffffff;
+    --border: #d3d1c7;
+    --border-strong: #b4b2a9;
+    --border-accent: #378ADD;
+    --bg-accent: #E6F1FB;
+    --text-accent: #0C447C;
+    --radius: 8px;
+    --reorderable: #7F77DD;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --text-primary: #f1efe8;
+      --text-secondary: #b4b2a9;
+      --text-muted: #888780;
+      --surface-0: #1c1c1a;
+      --surface-1: #262624;
+      --surface-2: #2c2c2a;
+      --border: #444441;
+      --border-strong: #5f5e5a;
+      --border-accent: #85B7EB;
+      --bg-accent: #042C53;
+      --text-accent: #B5D4F4;
+      --reorderable: #AFA9EC;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2rem;
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 500; margin: 0 0 4px; }
+  .meta { font-size: 13px; color: var(--text-secondary); margin: 0 0 20px; }
+  .preset-row { display: flex; align-items: center; gap: 8px; margin: 0 0 20px; }
+  .preset-row label { font-size: 13px; color: var(--text-secondary); }
+  .preset-row select {
+    font: inherit;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: var(--surface-1);
+    border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    min-width: 200px;
+  }
+  .chain-label { font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; }
+  .chain { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 3px; }
+  .block {
+    flex: 0 0 auto;
+    width: 62px;
+    height: 40px;
+    padding: 4px 6px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: left;
+    background: var(--surface-1);
+    border: 0.5px solid var(--border-strong);
+    font: inherit;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .block.io { cursor: default; }
+  .block.movable { border-color: var(--reorderable); }
+  .block.selected { background: var(--bg-accent); border: 1.5px solid var(--border-accent); }
+  .block .label { font-size: 10px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .block.selected .label { color: var(--text-accent); }
+  .block .sub { font-size: 9px; color: var(--text-secondary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .block.selected .sub { color: var(--text-accent); }
+  .arrow { display: flex; align-items: center; justify-content: center; width: 12px; height: 40px; color: var(--text-muted); flex: 0 0 auto; font-size: 13px; }
+  .legend { display: flex; gap: 16px; margin: 8px 0 20px; font-size: 12px; color: var(--text-secondary); align-items: center; }
+  .legend .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .editor {
+    background: var(--surface-2);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+  }
+  .editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .editor-title { font-size: 15px; font-weight: 500; }
+  .bypass { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+  .row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .row .rlabel { width: 130px; font-size: 13px; color: var(--text-secondary); flex-shrink: 0; }
+  .row input[type=range] { flex: 1; }
+  .row .val { font-size: 12px; width: 28px; text-align: right; }
+  .empty { font-size: 13px; color: var(--text-muted); margin: 0; }
+  .notes { margin-top: 24px; font-size: 13px; color: var(--text-secondary); }
+  .notes h2 { font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 0 0 6px; }
+  .notes ul { margin: 0 0 16px; padding-left: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Signal chain editor — concept mockup</h1>
+  <p class="meta">Saved 2026-07-26. Click a block to preview its parameter editor below.</p>
+
+  <div class="preset-row">
+    <label for="presetSelect">Preset</label>
+    <select id="presetSelect"></select>
+  </div>
+
+  <p class="chain-label">Signal chain</p>
+  <div class="chain" id="chain"></div>
+  <div class="legend">
+    <span><span class="swatch" style="background: var(--border-strong);"></span>fixed position</span>
+    <span><span class="swatch" style="background: var(--reorderable);"></span>reorderable</span>
+  </div>
+
+  <div class="editor" id="editor"></div>
+
+  <div class="notes">
+    <h2>Confirmed real-hardware structure (2026-07-26)</h2>
+    <ul>
+      <li>Input is always first, Output is always last — both fixed.</li>
+      <li>Amp and Cab are separate blocks, but always adjacent — Amp immediately before Cab. This pair's position is fixed; it cannot move.</li>
+      <li>Every other block (Wah, Volume Pedal, Distortion, Mod, Delay, Reverb, FX Loop, FX1, FX2) can be freely reordered before or after the Amp/Cab pair, in any order.</li>
+    </ul>
+    <h2>Still open</h2>
+    <ul>
+      <li>Whether the unit exposes chain reordering via MIDI/SysEx at all, or whether this would be an app-only concept layered on top — likely tied to the still-undecoded Bulk Rig/Rig Description structure.</li>
+      <li>Whether Cab has independently configurable parameters (cabinet type, mic model, mic position) beyond what's currently modeled — Amp/Cab is currently one combined effect in <code>EffectDefinitions</code>.</li>
+      <li>This mockup's block styling/interaction pattern reuses the existing <code>EffectEditorComponent</code> control types (knob/toggle/selector) — not yet reconciled with how reordering itself would be triggered (drag handles, arrows, etc.).</li>
+    </ul>
+  </div>
+</div>
+<script>
+// Structure (order, fixed/movable) is the same across presets - only which model is loaded
+// per slot changes. "cab" has no sub in any preset since it's not mapped in EffectDefinitions yet.
+const chainStructure = [
+  { id: 'input', label: 'Input', fixed: true, kind: 'io' },
+  { id: 'wah', label: 'Wah', fixed: false, kind: 'fx' },
+  { id: 'vol', label: 'Volume', fixed: false, kind: 'fx' },
+  { id: 'disto', label: 'Distortion', fixed: false, kind: 'fx' },
+  { id: 'amp', label: 'Amp', fixed: true, kind: 'fx' },
+  { id: 'cab', label: 'Cab', fixed: true, kind: 'fx' },
+  { id: 'mod', label: 'Mod', fixed: false, kind: 'fx' },
+  { id: 'delay', label: 'Delay', fixed: false, kind: 'fx' },
+  { id: 'reverb', label: 'Reverb', fixed: false, kind: 'fx' },
+  { id: 'fxloop', label: 'FX Loop', fixed: false, kind: 'fx' },
+  { id: 'fx1', label: 'FX1', fixed: false, kind: 'fx' },
+  { id: 'fx2', label: 'FX2', fixed: false, kind: 'fx' },
+  { id: 'output', label: 'Output', fixed: true, kind: 'io' },
+];
+
+const presets = {
+  b4: { name: 'B4 — Big Blue', subs: {
+    wah: 'Black Wah', vol: 'Pedal', disto: 'Green JRC', amp: '59 Tweed Lux', cab: 'unmapped',
+    mod: 'C1 Chor/Vib', delay: 'Tape Echo', reverb: 'Eleven SR', fxloop: '',
+    fx1: 'Graphic EQ', fx2: 'Dyn3 Comp',
+  }},
+  a1: { name: 'A1 — Clean Country', subs: {
+    wah: 'Sine Wah', vol: 'Pedal', disto: 'bypassed', amp: '64 Blk Panel Vib', cab: 'unmapped',
+    mod: 'Orange Phaser', delay: 'BBD Delay', reverb: 'Blackpanel Spring', fxloop: '',
+    fx1: 'Para EQ', fx2: 'Gray Comp',
+  }},
+  c2: { name: 'C2 — Metal Rhythm', subs: {
+    wah: 'Black Wah', vol: 'Pedal', disto: 'DC_Disto', amp: '92 Treadplate Mod', cab: 'unmapped',
+    mod: 'Flanger', delay: 'Dyn Delay', reverb: 'Eleven SR', fxloop: '',
+    fx1: 'Dyn3 Comp', fx2: 'Graphic EQ',
+  }},
+};
+
+let currentPreset = 'b4';
+
+function currentChain() {
+  const subs = presets[currentPreset].subs;
+  return chainStructure.map(block => ({ ...block, sub: subs[block.id] || '' }));
+}
+
+const editors = {
+  disto: { name: 'Green JRC Disto', bypass: false, controls: [
+    { label: 'Overdrive', type: 'knob', value: 64 },
+    { label: 'Tone', type: 'knob', value: 80 },
+    { label: 'Level', type: 'knob', value: 90 },
+  ]},
+  amp: { name: '59 Tweed Lux', bypass: false, controls: [
+    { label: 'Tone', type: 'knob', value: 70 },
+    { label: 'Instrument Volume', type: 'knob', value: 55 },
+    { label: 'Mic Volume', type: 'knob', value: 60 },
+  ]},
+  mod: { name: 'C1 Chor/Vib', bypass: false, controls: [
+    { label: 'Chorus', type: 'knob', value: 40 },
+    { label: 'Vibrato Rate', type: 'knob', value: 30 },
+    { label: 'Sync', type: 'select', value: 'Off' },
+    { label: 'Mode', type: 'toggle', value: false, onLabel: 'Vibrato', offLabel: 'Chorus' },
+  ]},
+};
+
+let selected = 'disto';
+
+function renderPresetSelect() {
+  const el = document.getElementById('presetSelect');
+  el.innerHTML = '';
+  Object.keys(presets).forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = presets[id].name;
+    if (id === currentPreset) opt.selected = true;
+    el.appendChild(opt);
+  });
+  el.onchange = () => { currentPreset = el.value; renderChain(); renderEditor(); };
+}
+
+function renderChain() {
+  const el = document.getElementById('chain');
+  el.innerHTML = '';
+  const chain = currentChain();
+  chain.forEach((block, i) => {
+    const isIo = block.kind === 'io';
+    const isSel = block.id === selected;
+    const btn = document.createElement('button');
+    btn.className = 'block' + (isIo ? ' io' : '') + (!block.fixed ? ' movable' : '') + (isSel ? ' selected' : '');
+    btn.innerHTML = '<div class="label">' + block.label + '</div>' +
+      (block.sub ? '<div class="sub">' + block.sub + '</div>' : '');
+    if (!isIo) btn.onclick = () => { selected = block.id; renderChain(); renderEditor(); };
+    el.appendChild(btn);
+    if (i < chain.length - 1) {
+      const arrow = document.createElement('span');
+      arrow.className = 'arrow';
+      arrow.textContent = '→';
+      el.appendChild(arrow);
+    }
+  });
+}
+
+function renderEditor() {
+  const el = document.getElementById('editor');
+  const data = editors[selected];
+  if (!data) {
+    el.innerHTML = '<p class="empty">No editable parameters mapped for this block yet.</p>';
+    return;
+  }
+  let html = '<div class="editor-head"><span class="editor-title">' + data.name + '</span>' +
+    '<label class="bypass">Bypass <input type="checkbox" ' + (data.bypass ? 'checked' : '') + ' /></label></div>';
+  data.controls.forEach(c => {
+    html += '<div class="row"><span class="rlabel">' + c.label + '</span>';
+    if (c.type === 'knob') {
+      html += '<input type="range" min="0" max="127" value="' + c.value + '" /><span class="val">' + c.value + '</span>';
+    } else if (c.type === 'select') {
+      html += '<select style="flex:1;"><option>' + c.value + '</option></select>';
+    } else if (c.type === 'toggle') {
+      html += '<span style="font-size:13px;">' + (c.value ? c.onLabel : c.offLabel) + '</span>';
+    }
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+renderPresetSelect();
+renderChain();
+renderEditor();
+</script>
+</body>
+</html>

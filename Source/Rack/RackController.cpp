@@ -228,7 +228,15 @@ namespace Rack
             case SysExFrame::Command::getBulkTfx:
             case SysExFrame::Command::setBulkTfx:
             {
-                auto decoded = SevenBitCodec::decodeFrom7Bits (params);
+                // Decode from rawBytes (byte 6 onward, INCLUDING the trailing F7) rather than
+                // `params` (which SysExFrame::parse has already trimmed the F7 off of) - matching
+                // ElevenHack's own Arrays.copyOfRange(msg, 6, msg.length) exactly. Verified this
+                // isn't just a cosmetic distinction: decoding with the F7 excluded changes decoded
+                // bytes beyond just the final byte (confirmed via a byte-by-byte diff against the
+                // full decode - see Source/Rack/BulkRigParser.h), so this must match exactly for
+                // BulkRigParser's byte offsets to line up.
+                std::vector<uint8_t> payload (rawBytes.begin() + 6, rawBytes.end());
+                auto decoded = SevenBitCodec::decodeFrom7Bits (payload);
                 listeners.call ([&] (Listener& l) { l.onBulkRigReceived (decoded); });
                 break;
             }

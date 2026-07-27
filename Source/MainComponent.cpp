@@ -19,6 +19,7 @@ MainComponent::MainComponent()
     tabs.addTab ("Rig Browser", juce::Colours::transparentBlack, &rigBrowserComponent, false);
     tabs.addTab ("Globals", juce::Colours::transparentBlack, &rigGlobalsComponent, false);
     tabs.addTab ("Effect Editor", juce::Colours::transparentBlack, &effectEditorComponent, false);
+    tabs.addTab ("Signal Chain", juce::Colours::transparentBlack, &signalChainComponent, false);
 
     refreshDeviceLists();
 

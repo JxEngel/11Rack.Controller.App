@@ -7,6 +7,7 @@
 #include "RigBrowserComponent.h"
 #include "RigGlobalsComponent.h"
 #include "EffectEditorComponent.h"
+#include "SignalChainComponent.h"
 
 #include <vector>
 
@@ -42,6 +43,7 @@ private:
     RigBrowserComponent rigBrowserComponent { controller };
     RigGlobalsComponent rigGlobalsComponent { controller };
     EffectEditorComponent effectEditorComponent { controller };
+    SignalChainComponent signalChainComponent { controller };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

@@ -561,6 +561,74 @@ controls - **no effect on either Type control**. Ruled out. Neither Type control
 **Deferred** - not blocking anything else, since FX1/FX2's other 9 effects are unaffected; Para EQ
 stays at its current 13-real-param + 1-placeholder state until there's a real lead on the Type CCs.
 
+**Twenty-first round (2026-07-26): the Bulk Rig payload's byte format is fully decoded - not
+guessed, read directly from source.** ElevenHack's own `tfx/TfxParser.java`/`Section.java`/
+`ParseUtils.java` turned out to document the exact structure - the "most promising lead" flagged in
+the Open Items entry below was correct. Format, confirmed byte-for-byte against both ElevenHack's own
+`bulkdump.bin` test fixture and our real hardware capture:
+
+- 36-byte header: 4-byte version + 4-byte header code (both raw, no transform) + a 28-byte rig name
+  built from 7 quadlets, each individually byte-reversed (`buf[3],buf[2],buf[1],buf[0]`) then
+  concatenated and trimmed at the first NUL.
+- One TOC `Section` (id `'A'`) immediately after the header: a 4-byte block header (`byteSize` as a
+  little-endian uint16, always a multiple of 8; `sectionId` as the 4th byte) followed by exactly
+  `byteSize/8` key/value quadlet pairs - the pair count is derived from `byteSize`, not a hardcoded
+  37. Each pair is a 4-char tag (same byte-reversal as the name) plus a signed 32-bit little-endian
+  value (can legitimately be negative - e.g. `Driv = -1073741824` - this is Java `int` overflow
+  semantics carried through, not a bug).
+- The TOC holds rig-level globals (`RVol`, `Tmpo`, `FXc1`-`FXc4`, `Msyc`, etc. - matching most of the
+  existing `Rig Params`/`RigGlobalsComponent` registry, plus one previously-undocumented field,
+  `WoLS`) and, for each of 10 signal-chain slot letters `'C'` through `'L'`, a `Wor<letter>`/
+  `Wst<letter>` pair giving that slot's `effectId`/`category`. `WorB`/`WstB` are themselves rig
+  globals despite the name shape - there is no slot letter `'B'`.
+- 10 more `Section`s (ids `'C'`-`'L'`) follow back-to-back with no padding, count field, or end
+  marker - the only termination signal is fewer than 12 bytes remaining. Each holds that slot's own
+  raw field-tag → value map (section byte sizes vary per effect - verified 7/4/16/3/24/4/10/6/10/4
+  pairs across the one real sample checked, not a fixed per-effect-type length).
+- Verified independently in a Python prototype before porting (this project's standard practice, per
+  `SevenBitCodec`'s earlier validation) - ElevenHack's reference fixture decoded to exactly the
+  expected 1082 bytes, rig name "Metal Rythm 1", with every TOC/section byte boundary matching
+  ElevenHack's own logic exactly.
+- One correction along the way: the 7-bit decode input must be `message[6:]` **including** the
+  trailing `F7` terminator (matching ElevenHack's own `Arrays.copyOfRange(msg, 6, msg.length)`), not
+  `message[6:-1]` as first assumed - the extra trailing byte doesn't affect the decoded result's
+  meaningful content, since `SevenBitCodec::decodeFrom7Bits` already always produces one
+  not-fully-meaningful trailing byte regardless (see `SevenBitCodec.h`).
+- Shipped as `Source/Rack/BulkRigParser.h`/`.cpp` + `BulkRigParserTests.cpp` (build-verified, all
+  test groups pass). This is a **structural** decode only - the TOC's `effectId`/`category` numbering
+  isn't yet reconciled against `EffectDefinitions`'s own IDs, and the signed-32-bit values aren't
+  calibrated against the 0-127 CC scale `EffectEditorComponent` uses. See
+  docs/implementation-plan.md Milestone 5 for the full writeup and what's still open.
+
+**Twenty-second round (2026-07-27): the Bulk Rig slot letter IS the real signal-chain position -
+confirmed against a real rig, not just inferred.** User loaded a real rig ("SLO 100") with an
+independently-known real pedal order (read directly off it) and compared it against a live Bulk Rig
+decode's slot letters:
+
+- Decoded letter order (C through L): `Vol, Wah, FX2, Disto, AmpCab, FXLoop, Mod, Delay, FX1, Reverb`
+  (AmpCab is one combined slot/letter for both Amp and Cab - see the twenty-first round above).
+- Real order on the unit: `VOL, WAH, FX2, Dist, Amp, Cab, FX Loop, MOD, DLY, FX1, REV`.
+- These match **exactly**, position for position (expanding AmpCab's one letter into its two
+  adjacent real blocks, Amp then Cab). This confirms `BulkRigParser::ParsedRig::slots`'s existing
+  C-to-L order (already documented in `BulkRigParser.h` as "in letter order") directly encodes real
+  signal-chain position - not just weakly suggested by one earlier sample as previously written here.
+
+**Correction to earlier hardware-structure notes**: Amp/Cab's position among the other blocks is
+**not** fixed - only their adjacency to each other is (Amp always immediately before Cab). In this
+sample, the Amp/Cab pair sat in the middle of the order (after Distortion, before FX Loop), not in
+any single fixed spot. Input and Output still aren't confirmed the same way (neither appears in the
+Bulk Rig payload at all), but the unit's own manual describes them as the chain's fixed endpoints,
+which is retained as the one remaining unconfirmed-but-reasonable assumption.
+
+Two follow-on fixes from this round:
+- `SignalChainComponent` (the new "Signal Chain" tab - see docs/implementation-plan.md Milestone 5)
+  was rebuilding the chain in a fixed guessed order regardless of the real decode - fixed to build
+  the chain's actual order directly from `rig.slots` (already correct) instead.
+- `DiagnosticsComponent`'s Bulk Rig log was printing each slot's letter as its ASCII code ("67"
+  instead of "C") - a `juce::String` numeric-conversion overload was firing for the raw `char`
+  instead of the single-character one; `juce::String::charToString` fixes it. This is what made the
+  letter-order comparison hard to read in the first place.
+
 ## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
 
 See [project-overview.md](project-overview.md) "Prior Art Found" section for the full writeup.
@@ -658,15 +726,10 @@ Summary retained here for quick reference:
       (confirmed on real hardware 2026-07-24 - see "twentieth round" above). Neither has a known
       CC; the one candidate tested (CC 60/Setting3) was ruled out for both. Deferred - not blocking
       anything else in FX1/FX2.
-- [ ] **New (2026-07-24)**: decode the Bulk Rig payload (977 bytes after 7-bit decoding, confirmed
-      working via `RackController::requestBulkRig()` - see "second round" above and
-      `docs/samples/bulk-rig-sample-2026-07-24.txt`) into per-effect-slot/per-parameter values, so
-      the app can read what's actually loaded on the unit instead of requiring manual selection in
-      `EffectEditorComponent`. Genuinely undecoded territory, larger in scope than anything cracked
-      so far (Rig Description was 34 bytes/11 tuples by comparison). Most promising unexplored lead:
-      ElevenHack's `tfx/TfxParser.java` (see the still-deferred `.tfx` parser item) almost certainly
-      documents the same "whole rig" byte structure for local file save/load - reading that first
-      would likely beat reverse-engineering the Bulk Rig bytes from scratch via diffing. Also worth
-      checking whether the Rig Description tuple structure is a subset/index into this same
-      per-slot layout. See docs/implementation-plan.md "Not yet scheduled / parked" for the mirrored
-      entry. Not yet scoped into concrete steps.
+- [x] Decode the Bulk Rig payload's byte structure — **resolved (2026-07-26)**, see "twenty-first
+      round" above and `Source/Rack/BulkRigParser.h`/`.cpp`. The header/TOC/per-slot section format
+      is now fully decoded and shipped. **Still open** (semantic mapping, tracked in
+      docs/implementation-plan.md "Not yet scheduled / parked"): reconciling the TOC's
+      `effectId`/`category` numbering against `EffectDefinitions`'s own IDs, mapping raw field tags
+      onto `ParamDefinition::key`, and calibrating the signed-32-bit values against the 0-127 CC
+      scale — none of that is wired into `EffectEditorComponent` yet.

@@ -1,4 +1,6 @@
 #include "DiagnosticsComponent.h"
+#include "Rack/BulkRigParser.h"
+#include "Rack/EffectDefinitions.h"
 
 using Rack::RackController;
 
@@ -253,8 +255,49 @@ void DiagnosticsComponent::onRigDescriptionReceived (const std::vector<uint8_t>&
 
 void DiagnosticsComponent::onBulkRigReceived (const std::vector<uint8_t>& decodedTfxBytes)
 {
-    logMessage ("Bulk Rig: " + juce::String ((int) decodedTfxBytes.size())
-                + " decoded bytes (not yet parsed as .tfx - see docs/implementation-plan.md)");
+    auto rig = Rack::BulkRigParser::parseDecoded (decodedTfxBytes);
+    if (! rig)
+    {
+        logMessage ("Bulk Rig: " + juce::String ((int) decodedTfxBytes.size())
+                    + " decoded bytes, but BulkRigParser could not parse them (unexpected structure).");
+        return;
+    }
+
+    logMessage ("Bulk Rig \"" + juce::String (rig->rigName) + "\" (" + juce::String ((int) decodedTfxBytes.size())
+                + " decoded bytes, " + juce::String ((int) rig->rigGlobals.size()) + " rig globals):");
+
+    for (const auto& [tag, value] : rig->rigGlobals)
+        logMessage ("    " + juce::String (tag) + " = " + juce::String (value));
+
+    // effectId/category turn out to match Rack::EffectDefinitions's own effectId/EffectClass
+    // numbering directly (confirmed across all 10 slots of the one real sample checked so far -
+    // e.g. category 0/effectId 12 is Amp/Cab, matching EffectDefinitions.h's own note that 12 is
+    // AMP_CAB) - so the effect/slot-type NAME shown here is a real lookup, not a guess. The raw
+    // per-param tags below are NOT the same key scheme as EffectDefinitions::ParamDefinition::key
+    // (e.g. BBD Delay's live-CC key is "Dely"/"Inpt"/"Mod ", but its Bulk Rig tag here is "Dly
+    // "/"InLv"/"ChVb") - that reconciliation is still open, see docs/implementation-plan.md "Not
+    // yet scheduled / parked".
+    for (const auto& slot : rig->slots)
+    {
+        auto effect = Rack::EffectDefinitions::lookup (slot.effectId);
+        auto slotType = Rack::EffectDefinitions::effectClassName (static_cast<Rack::EffectDefinitions::EffectClass> (slot.category));
+
+        juce::String line;
+        // NOTE: juce::String's numeric-conversion constructor kicks in for a plain `char` (not the
+        // single-character one) - juce::String::charToString is the one that actually produces "C"
+        // instead of "67". Caught 2026-07-27 when a real rig's slot letters were logged as ASCII
+        // codes instead of C-L, confusing the letter-order/chain-position comparison.
+        line << "  " << juce::String::charToString (static_cast<juce::juce_wchar> (slot.sectionId))
+             << " [" << juce::String (slotType) << "]: "
+             << (effect ? juce::String (effect->name) : "Unknown effectId " + juce::String (slot.effectId))
+             << " (" << (int) slot.params.size() << " raw params)";
+        logMessage (line);
+
+        // Raw tag/value pairs, as read straight off the wire - not yet mapped onto
+        // ParamDefinition::key/label (see the comment above), so shown as-is.
+        for (const auto& [tag, value] : slot.params)
+            logMessage ("      " + juce::String (tag) + " = " + juce::String (value));
+    }
 }
 
 void DiagnosticsComponent::onUnhandledMessage (const std::vector<uint8_t>& rawBytes)
