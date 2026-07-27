@@ -1,273 +1,633 @@
+<!-- Design notes, history, and open questions for this mockup live in
+     signal-chain-editor-concept-notes.md, not here - this file is meant to look like the actual
+     finished editor UI. Styling/layout mirrors the real Source/SignalChainComponent.cpp +
+     Source/SlotParamsPanel.cpp (dark JUCE LookAndFeel_V4-style theme, flat layout, no card). -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Signal chain editor — concept mockup</title>
+<title>Signal Chain Editor</title>
 <style>
   :root {
-    --text-primary: #1a1a1a;
-    --text-secondary: #5f5e5a;
-    --text-muted: #888780;
-    --surface-0: #f1efe8;
-    --surface-1: #f7f6f2;
-    --surface-2: #ffffff;
-    --border: #d3d1c7;
-    --border-strong: #b4b2a9;
-    --border-accent: #378ADD;
-    --bg-accent: #E6F1FB;
-    --text-accent: #0C447C;
-    --radius: 8px;
-    --reorderable: #7F77DD;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --text-primary: #f1efe8;
-      --text-secondary: #b4b2a9;
-      --text-muted: #888780;
-      --surface-0: #1c1c1a;
-      --surface-1: #262624;
-      --surface-2: #2c2c2a;
-      --border: #444441;
-      --border-strong: #5f5e5a;
-      --border-accent: #85B7EB;
-      --bg-accent: #042C53;
-      --text-accent: #B5D4F4;
-      --reorderable: #AFA9EC;
-    }
+    --bg: #262b31;
+    --surface: #2f353c;
+    --border: #4b5158;
+    --border-fixed: #6e7379;
+    --border-movable: #8f89e6;
+    --accent: #1e90ff;
+    --text: #e8e8e8;
+    --text-secondary: #9aa0a6;
+    --text-muted: #6b7178;
+    --radius: 5px;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 2rem;
-    background: var(--surface-0);
-    color: var(--text-primary);
+    padding: 1.5rem 2rem;
+    background: var(--bg);
+    color: var(--text);
     font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
-    font-size: 16px;
+    font-size: 14px;
     line-height: 1.5;
   }
-  .wrap { max-width: 1200px; margin: 0 auto; }
-  h1 { font-size: 18px; font-weight: 500; margin: 0 0 4px; }
-  .meta { font-size: 13px; color: var(--text-secondary); margin: 0 0 20px; }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+
   .preset-row { display: flex; align-items: center; gap: 8px; margin: 0 0 20px; }
-  .preset-row label { font-size: 13px; color: var(--text-secondary); }
-  .preset-row select {
+  select, button {
     font: inherit;
     font-size: 13px;
-    color: var(--text-primary);
-    background: var(--surface-1);
-    border: 0.5px solid var(--border-strong);
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 6px 10px;
-    min-width: 200px;
   }
-  .chain-label { font-size: 13px; color: var(--text-secondary); margin: 0 0 12px; }
-  .chain { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 3px; }
+  select { min-width: 220px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--border-movable); }
+  .status { font-size: 13px; color: var(--text-secondary); }
+
+  .preset-select-wrap { position: relative; display: flex; align-items: center; gap: 6px; }
+  .icon-btn {
+    width: 30px;
+    padding: 6px 0;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1;
+  }
+  button:disabled { opacity: 0.35; cursor: default; }
+  button:disabled:hover { border-color: var(--border); }
+
+  .rename-popover {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border-movable);
+    border-radius: var(--radius);
+    padding: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+  .rename-popover.open { display: block; }
+  .rename-field { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .rename-location { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+  .rename-popover input[type=text] { width: 190px; }
+  .rename-actions { display: flex; justify-content: flex-end; gap: 6px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { border-color: var(--accent); opacity: 0.9; }
+  /* Distinct warning colour from the plain "primary" accent - this action overwrites data on the
+     real unit with no undo, so it should never look like an equally-safe, routine confirm button. */
+  button.primary.destructive { background: #c0392b; border-color: #c0392b; }
+  .confirm-text { font-size: 13px; color: var(--text); margin: 0 0 10px; max-width: 260px; }
+
+  .chain-label { font-size: 13px; color: var(--text-secondary); margin: 0 0 4px; }
+  .chain-panel {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    padding: 10px;
+  }
+  .chain { display: flex; flex-wrap: nowrap; align-items: center; gap: 0; }
   .block {
     flex: 0 0 auto;
-    width: 62px;
+    width: 68px;
     height: 40px;
-    padding: 4px 6px;
-    border-radius: var(--radius);
+    padding: 3px 5px;
+    border-radius: 0;
     cursor: pointer;
     text-align: left;
-    background: var(--surface-1);
-    border: 0.5px solid var(--border-strong);
+    background: var(--bg);
+    border: 1px solid var(--border-fixed);
     font: inherit;
-    color: inherit;
+    color: var(--text);
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     overflow: hidden;
   }
   .block.io { cursor: default; }
-  .block.movable { border-color: var(--reorderable); }
-  .block.selected { background: var(--bg-accent); border: 1.5px solid var(--border-accent); }
-  .block .label { font-size: 10px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .block.selected .label { color: var(--text-accent); }
-  .block .sub { font-size: 9px; color: var(--text-secondary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .block.selected .sub { color: var(--text-accent); }
-  .arrow { display: flex; align-items: center; justify-content: center; width: 12px; height: 40px; color: var(--text-muted); flex: 0 0 auto; font-size: 13px; }
-  .legend { display: flex; gap: 16px; margin: 8px 0 20px; font-size: 12px; color: var(--text-secondary); align-items: center; }
-  .legend .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-  .editor {
-    background: var(--surface-2);
-    border: 0.5px solid var(--border);
-    border-radius: 12px;
-    padding: 1rem 1.25rem;
+  .block.movable { border-color: var(--border-movable); }
+  .block.selected { border: 1.5px solid var(--accent); }
+  .block.selected .label, .block.selected .sub { color: var(--accent); }
+  .block.selected .divider { background: var(--accent); opacity: 0.4; }
+  .block .label {
+    font-size: 10px; font-weight: 600; text-align: left;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .editor-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .editor-title { font-size: 15px; font-weight: 500; }
-  .bypass { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
-  .row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-  .row .rlabel { width: 130px; font-size: 13px; color: var(--text-secondary); flex-shrink: 0; }
-  .row input[type=range] { flex: 1; }
-  .row .val { font-size: 12px; width: 28px; text-align: right; }
-  .empty { font-size: 13px; color: var(--text-muted); margin: 0; }
-  .notes { margin-top: 24px; font-size: 13px; color: var(--text-secondary); }
-  .notes h2 { font-size: 14px; font-weight: 500; color: var(--text-primary); margin: 0 0 6px; }
-  .notes ul { margin: 0 0 16px; padding-left: 20px; }
+  .block .divider { height: 1px; background: var(--border); opacity: 0.7; margin: 3px 0; flex: 0 0 auto; }
+  .block .sub {
+    font-size: 9px; color: var(--text-secondary); text-align: left;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .arrow { flex: 0 0 auto; width: 9px; height: 40px; display: flex; align-items: center; justify-content: center; }
+  .arrow::after { content: ''; display: block; width: 6px; height: 1px; background: var(--text-muted); }
+  .amp-cab-group {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--border-fixed);
+    padding: 3px;
+    gap: 0;
+  }
+
+  .editor-row { display: flex; align-items: center; gap: 8px; margin: 20px 0 10px; }
+  .editor-row label { font-size: 13px; color: var(--text-secondary); width: 44px; }
+  .editor-row select { flex: 1; max-width: 420px; }
+  .note { font-size: 12px; color: var(--text-secondary); margin: 0 0 20px; max-width: 1200px; }
+  .empty { font-size: 13px; color: var(--text-muted); margin: 20px 0 0; }
+
+  .bypass-row { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-size: 13px; }
+  .bypass-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); }
+
+  .row { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+  .row .rlabel { width: 160px; font-size: 13px; color: var(--text); flex-shrink: 0; }
+  .row select { flex: 1; }
+  .row .toggle-state { font-size: 13px; color: var(--text-secondary); }
+
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 13px;
+    height: 13px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  .valbox {
+    width: 46px;
+    text-align: right;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 6px;
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Signal chain editor — concept mockup</h1>
-  <p class="meta">Saved 2026-07-26. Click a block to preview its parameter editor below.</p>
-
   <div class="preset-row">
-    <label for="presetSelect">Preset</label>
-    <select id="presetSelect"></select>
+    <div class="preset-select-wrap">
+      <select id="presetSelect"></select>
+      <button id="renameBtn" class="icon-btn" title="Rename preset" aria-label="Rename preset">&#9998;</button>
+      <div class="rename-popover" id="renamePopover">
+        <div class="rename-field">
+          <!-- The bank/slot location is fixed (the rig's physical position on the unit) - only
+               the name itself is ever editable, so it's shown as plain static text, not part of
+               the input. -->
+          <span class="rename-location" id="renameLocation"></span>
+          <input type="text" id="renameInput" />
+        </div>
+        <div class="rename-actions">
+          <button id="renameCancelBtn">Cancel</button>
+          <button id="renameSaveBtn" class="primary">Save</button>
+        </div>
+      </div>
+
+      <button id="saveToUnitBtn">Save to Unit</button>
+      <div class="rename-popover" id="saveConfirmPopover">
+        <!-- Deliberately a confirm-before-you-commit step, not a one-click save - this overwrites
+             whatever is currently stored at that rig slot on the real unit, with no undo. See
+             signal-chain-editor-concept-notes.md "UI/UX design decisions". -->
+        <p class="confirm-text" id="saveConfirmText"></p>
+        <div class="rename-actions">
+          <button id="saveCancelBtn">Cancel</button>
+          <button id="saveConfirmBtn" class="primary destructive">Overwrite</button>
+        </div>
+      </div>
+    </div>
+    <button id="refreshBtn">Refresh Rig List</button>
+    <span class="status" id="statusText"></span>
   </div>
 
   <p class="chain-label">Signal chain</p>
-  <div class="chain" id="chain"></div>
-  <div class="legend">
-    <span><span class="swatch" style="background: var(--border-strong);"></span>fixed position</span>
-    <span><span class="swatch" style="background: var(--reorderable);"></span>reorderable</span>
+  <div class="chain-panel">
+    <div class="chain" id="chain"></div>
   </div>
 
-  <div class="editor" id="editor"></div>
-
-  <div class="notes">
-    <h2>Confirmed real-hardware structure (2026-07-26)</h2>
-    <ul>
-      <li>Input is always first, Output is always last — both fixed.</li>
-      <li>Amp and Cab are separate blocks, but always adjacent — Amp immediately before Cab. This pair's position is fixed; it cannot move.</li>
-      <li>Every other block (Wah, Volume Pedal, Distortion, Mod, Delay, Reverb, FX Loop, FX1, FX2) can be freely reordered before or after the Amp/Cab pair, in any order.</li>
-    </ul>
-    <h2>Still open</h2>
-    <ul>
-      <li>Whether the unit exposes chain reordering via MIDI/SysEx at all, or whether this would be an app-only concept layered on top — likely tied to the still-undecoded Bulk Rig/Rig Description structure.</li>
-      <li>Whether Cab has independently configurable parameters (cabinet type, mic model, mic position) beyond what's currently modeled — Amp/Cab is currently one combined effect in <code>EffectDefinitions</code>.</li>
-      <li>This mockup's block styling/interaction pattern reuses the existing <code>EffectEditorComponent</code> control types (knob/toggle/selector) — not yet reconciled with how reordering itself would be triggered (drag handles, arrows, etc.).</li>
-    </ul>
-  </div>
+  <div id="editorArea"></div>
 </div>
 <script>
-// Structure (order, fixed/movable) is the same across presets - only which model is loaded
-// per slot changes. "cab" has no sub in any preset since it's not mapped in EffectDefinitions yet.
+// Chain structure matches the real signal path (Source/SignalChainComponent.cpp): Input always
+// first, Output always last, everything else in whatever order a live Bulk Rig decode reports -
+// this mock just shows one example order. Only Input/Output are truly fixed; Amp/Cab are always
+// adjacent to each other but their position among the rest varies per rig (see
+// signal-chain-editor-concept-notes.md for the finding that corrected this).
 const chainStructure = [
-  { id: 'input', label: 'Input', fixed: true, kind: 'io' },
-  { id: 'wah', label: 'Wah', fixed: false, kind: 'fx' },
-  { id: 'vol', label: 'Volume', fixed: false, kind: 'fx' },
-  { id: 'disto', label: 'Distortion', fixed: false, kind: 'fx' },
-  { id: 'amp', label: 'Amp', fixed: true, kind: 'fx' },
-  { id: 'cab', label: 'Cab', fixed: true, kind: 'fx' },
-  { id: 'mod', label: 'Mod', fixed: false, kind: 'fx' },
-  { id: 'delay', label: 'Delay', fixed: false, kind: 'fx' },
-  { id: 'reverb', label: 'Reverb', fixed: false, kind: 'fx' },
-  { id: 'fxloop', label: 'FX Loop', fixed: false, kind: 'fx' },
-  { id: 'fx1', label: 'FX1', fixed: false, kind: 'fx' },
-  { id: 'fx2', label: 'FX2', fixed: false, kind: 'fx' },
-  { id: 'output', label: 'Output', fixed: true, kind: 'io' },
+  { id: 'input', label: 'Input', io: true },
+  { id: 'wah', label: 'Wah' },
+  { id: 'vol', label: 'Volume' },
+  { id: 'disto', label: 'Distortion' },
+  { id: 'amp', label: 'Amp' },
+  { id: 'cab', label: 'Cab' },
+  { id: 'mod', label: 'Mod' },
+  { id: 'delay', label: 'Delay' },
+  { id: 'reverb', label: 'Reverb' },
+  { id: 'fxloop', label: 'FX Loop' },
+  { id: 'fx1', label: 'FX1' },
+  { id: 'fx2', label: 'FX2' },
+  { id: 'output', label: 'Output', io: true },
 ];
 
-const presets = {
-  b4: { name: 'B4 — Big Blue', subs: {
-    wah: 'Black Wah', vol: 'Pedal', disto: 'Green JRC', amp: '59 Tweed Lux', cab: 'unmapped',
-    mod: 'C1 Chor/Vib', delay: 'Tape Echo', reverb: 'Eleven SR', fxloop: '',
-    fx1: 'Graphic EQ', fx2: 'Dyn3 Comp',
-  }},
-  a1: { name: 'A1 — Clean Country', subs: {
-    wah: 'Sine Wah', vol: 'Pedal', disto: 'bypassed', amp: '64 Blk Panel Vib', cab: 'unmapped',
-    mod: 'Orange Phaser', delay: 'BBD Delay', reverb: 'Blackpanel Spring', fxloop: '',
-    fx1: 'Para EQ', fx2: 'Gray Comp',
-  }},
-  c2: { name: 'C2 — Metal Rhythm', subs: {
-    wah: 'Black Wah', vol: 'Pedal', disto: 'DC_Disto', amp: '92 Treadplate Mod', cab: 'unmapped',
-    mod: 'Flanger', delay: 'Dyn Delay', reverb: 'Eleven SR', fxloop: '',
-    fx1: 'Dyn3 Comp', fx2: 'Graphic EQ',
-  }},
+const syncOptions = [
+  'Off', 'Whole Note', 'Dotted Half Note', 'Half Note', 'Half Note Triplet',
+  'Dotted Quarter Note', 'Quarter Note', 'Quarter Note Triplet', 'Dotted Eighth Note',
+  'Eighth Note', 'Eighth Note Triplet', 'Dotted Sixteenth Note', 'Sixteenth Note',
+  'Sixteenth Note Triplet',
+];
+
+// The 6 Mod-slot effects, shared verbatim by FX1/FX2 (confirmed on real hardware - see
+// docs/protocol-spec.md "eighteenth round"). Mirrors Source/Rack/EffectDefinitions.cpp exactly -
+// names/labels/control types are the real ones, not invented for this mockup.
+const modOnlyEffects = {
+  'Chorus/Vibrato': [
+    { l: 'Chorus', t: 'knob' }, { l: 'Vibrato Rate', t: 'knob' },
+    { l: 'Sync', t: 'select', options: syncOptions }, { l: 'Vibrato Depth', t: 'knob' },
+    { l: 'Chorus/Vibrato', t: 'toggle', on: 'Vibrato', off: 'Chorus' },
+  ],
+  'Multi Chorus': [
+    { l: 'Rate', t: 'knob' }, { l: 'Sync', t: 'select', options: syncOptions },
+    { l: 'Depth', t: 'knob' }, { l: 'Pre-Delay', t: 'knob' }, { l: 'Mix', t: 'knob' },
+    { l: 'Tri/Sine', t: 'toggle', on: 'On', off: 'Off' }, { l: 'Voices', t: 'knob' },
+    { l: 'Width', t: 'knob' }, { l: 'Lo Cut', t: 'knob' },
+  ],
+  'Flanger': [
+    { l: 'Pre-Delay', t: 'knob' }, { l: 'Depth', t: 'knob' }, { l: 'Rate', t: 'knob' },
+    { l: 'Sync', t: 'select', options: syncOptions }, { l: 'Feedback', t: 'knob' },
+  ],
+  'Vibe Phaser': [
+    { l: 'Volume', t: 'knob' }, { l: 'Depth', t: 'knob' }, { l: 'Rate', t: 'knob' },
+    { l: 'Sync', t: 'select', options: syncOptions },
+    { l: 'Chorus/Vibrato', t: 'toggle', on: 'Vibrato', off: 'Chorus' },
+  ],
+  'Orange Phaser': [
+    { l: 'Rate', t: 'knob' }, { l: 'Sync', t: 'select', options: syncOptions },
+  ],
+  'Roto Speaker': [
+    { l: 'Speed', t: 'select', options: ['Slow', 'Brake', 'Fast'] }, { l: 'Balance', t: 'knob' },
+    { l: 'Type', t: 'select', options: ['120', '122', '21H', 'Foam Dr', 'Rover', 'Memphis', 'Wolf', 'Watery'] },
+  ],
 };
 
-let currentPreset = 'b4';
-
-function currentChain() {
-  const subs = presets[currentPreset].subs;
-  return chainStructure.map(block => ({ ...block, sub: subs[block.id] || '' }));
-}
-
-const editors = {
-  disto: { name: 'Green JRC Disto', bypass: false, controls: [
-    { label: 'Overdrive', type: 'knob', value: 64 },
-    { label: 'Tone', type: 'knob', value: 80 },
-    { label: 'Level', type: 'knob', value: 90 },
-  ]},
-  amp: { name: '59 Tweed Lux', bypass: false, controls: [
-    { label: 'Tone', type: 'knob', value: 70 },
-    { label: 'Instrument Volume', type: 'knob', value: 55 },
-    { label: 'Mic Volume', type: 'knob', value: 60 },
-  ]},
-  mod: { name: 'C1 Chor/Vib', bypass: false, controls: [
-    { label: 'Chorus', type: 'knob', value: 40 },
-    { label: 'Vibrato Rate', type: 'knob', value: 30 },
-    { label: 'Sync', type: 'select', value: 'Off' },
-    { label: 'Mode', type: 'toggle', value: false, onLabel: 'Vibrato', offLabel: 'Chorus' },
-  ]},
+// FX1/FX2-only effects - no dedicated native slot on the unit at all, only ever reachable here.
+const fx1fx2OnlyEffects = {
+  'Graphic EQ': [
+    { l: '100 Hz (-12 to +12)', t: 'knob' }, { l: '370 Hz (-18 to +18)', t: 'knob' },
+    { l: '800 Hz (-18 to +18)', t: 'knob' }, { l: '2 KHz (-18 to +18)', t: 'knob' },
+    { l: '3.25 KHz (-12 to +12)', t: 'knob' }, { l: 'Output (-20 to +6)', t: 'knob' },
+  ],
+  'Para EQ': [
+    { l: 'L Gain', t: 'knob' }, { l: 'LM Gain', t: 'knob' }, { l: '(unused)', t: 'knob' },
+    { l: 'HM Gain', t: 'knob' }, { l: 'H Gain', t: 'knob' }, { l: 'Output', t: 'knob' },
+    { l: 'L Freq', t: 'knob' }, { l: 'LM Freq', t: 'knob' }, { l: 'L Q', t: 'knob' },
+    { l: 'LM Q', t: 'knob' }, { l: 'HM Freq', t: 'knob' }, { l: 'HM Q', t: 'knob' },
+    { l: 'H Freq', t: 'knob' }, { l: 'H Q', t: 'knob' },
+  ],
+  'Gray Compressor': [ { l: 'Sustain', t: 'knob' }, { l: 'Level', t: 'knob' } ],
+  'Dyn3 Compressor': [
+    { l: 'Threshold', t: 'knob' }, { l: 'Attack', t: 'knob' }, { l: 'Release', t: 'knob' },
+    { l: 'Gain', t: 'knob' }, { l: 'Ratio', t: 'knob' }, { l: 'Knee', t: 'knob' },
+  ],
 };
 
+// One entry per block that has a real SlotConfig in the app (Source/SlotConfig.cpp) - Volume
+// Pedal/Amp/Cab/FX Loop deliberately have none yet (see signal-chain-editor-concept-notes.md), so
+// clicking those blocks falls through to the "not yet editable" message instead.
+const slotConfigs = {
+  disto: {
+    note: "No live readback for per-knob values - MIDI CC has no query mechanism, so knobs only reflect what YOU set here, not the unit's actual current values. (Bypass state and which model is loaded CAN now be read from a live Bulk Rig decode - see SignalChainComponent.) Pick the model that matches what's really loaded in the unit's Distortion slot before adjusting anything. Hardware-confirmed 2026-07-24 (Bypass + all 3 knobs).",
+    default: 'Green JRC Disto',
+    effects: {
+      'Tri Knob Disto': [ { l: 'Volume', t: 'knob' }, { l: 'Sustain', t: 'knob' }, { l: 'Tone', t: 'knob' } ],
+      'Black Op Disto': [ { l: 'Distortion', t: 'knob' }, { l: 'Cut', t: 'knob' }, { l: 'Volume', t: 'knob' } ],
+      'Green JRC Disto': [ { l: 'Overdrive', t: 'knob' }, { l: 'Tone', t: 'knob' }, { l: 'Level', t: 'knob' } ],
+      'White Boost Disto': [ { l: 'Gain', t: 'knob' }, { l: 'Treble', t: 'knob' }, { l: 'Bass', t: 'knob' }, { l: 'Volume', t: 'knob' } ],
+      'DC_Disto': [ { l: 'Distortion', t: 'knob' }, { l: 'Treble', t: 'knob' }, { l: 'Bass', t: 'knob' }, { l: 'Volume', t: 'knob' } ],
+    },
+  },
+  wah: {
+    note: 'Only the Position knob ("Wah Pedal", CC 4) has a confirmed CC mapping - the second knob (VxCr) has no known CC in the official chart and is intentionally omitted rather than guessed. Not yet hardware-tested. No live readback for per-knob values.',
+    default: 'Sine Wah',
+    effects: {
+      'Sine Wah': [ { l: 'Position', t: 'knob' }, { l: 'VxCr', t: 'knob' } ],
+      'Black Wah': [ { l: 'Position', t: 'knob' }, { l: 'VxCr', t: 'knob' } ],
+    },
+  },
+  mod: {
+    note: "All 6 Mod-slot effects the unit itself offers are listed here, in the unit's own on-screen order. CC data for Chorus/Vibrato, Vibe Phaser, Flanger, Multi Chorus, and Roto Speaker is sourced directly from the official Eleven Rack User Guide (Chapter 9); Orange Phaser's Rate knob is hardware-confirmed, but its Sync was recently corrected from a toggle to a tempo-sync list - not yet re-tested. Roto Speaker's Type option list/order is hardware-confirmed, but the specific CC value per option is only a range midpoint guess. Confirmed 2026-07-24: Chorus/Vibrato's knobs, Sync, Bypass, and Mode toggle all work correctly. The rest of this slot is not yet hardware-tested. No live readback for per-knob values.",
+    default: 'Chorus/Vibrato',
+    effects: modOnlyEffects,
+  },
+  reverb: {
+    note: 'Real parameters sourced from the official Eleven Rack User Guide (Chapter 9) - Mix/Decay/Tone for Blackpanel Spring Reverb, plus Pre-Delay and a 25-option Type list for Eleven SR. Type\'s option list/order is hardware-confirmed, but the specific CC value per option is only a range midpoint guess. Confirmed 2026-07-24: the unit only has these 2 real Reverb models. No live readback for per-knob values.',
+    default: 'Blackpanel Spring Reverb',
+    effects: {
+      'Blackpanel Spring Reverb': [ { l: 'Mix', t: 'knob' }, { l: 'Decay', t: 'knob' }, { l: 'Tone', t: 'knob' } ],
+      'Eleven SR': [
+        { l: 'Mix', t: 'knob' }, { l: 'Decay', t: 'knob' }, { l: 'Tone', t: 'knob' }, { l: 'Pre-Delay', t: 'knob' },
+        { l: 'Type', t: 'select', options: [
+          'Echo Room', 'Studio', 'Small Room', 'Jazz Club', 'Small Club', 'Garage', 'Medium Room',
+          'Tiled Room', 'Wood Room', 'Small Theater', 'Medium Theater', 'Large Theater', 'Rich Hall',
+          'Concert Hall', 'Bright Hall', 'Church', 'Cathedral', 'Arena', 'Small Plate', 'Medium Plate',
+          'Large Plate', 'Canyon', 'Supa Long', 'Early Reflect 1', 'Early Reflect 2',
+        ] },
+      ],
+    },
+  },
+  delay: {
+    note: 'Real parameters sourced from the official Eleven Rack User Guide (Chapter 9 CC table, cross-checked against Chapter 3\'s plain-English descriptions to get each param\'s real type right - e.g. BBD Delay\'s "Mod" and Tape Echo\'s "Hiss" are switches, not knobs). Dyn Delay\'s Mode selector is hardware-confirmed at 4 tested points. All three delay effects have a "Fine" on/off control with no known CC anywhere - not included. Confirmed 2026-07-24: Tape Echo\'s other controls all work correctly. No live readback for per-knob values.',
+    default: 'BBD Delay',
+    effects: {
+      'BBD Delay': [
+        { l: 'Delay', t: 'knob' }, { l: 'Sync', t: 'select', options: syncOptions }, { l: 'Feedback', t: 'knob' },
+        { l: 'Mix', t: 'knob' }, { l: 'Input Level', t: 'knob' },
+        { l: 'Mod (Chorus/Vibrato)', t: 'toggle', on: 'On', off: 'Off' }, { l: 'Depth', t: 'knob' },
+        { l: 'Expanded Delay', t: 'toggle', on: 'On', off: 'Off' }, { l: 'Noise', t: 'toggle', on: 'On', off: 'Off' },
+      ],
+      'Tape Echo': [
+        { l: 'Delay', t: 'knob' }, { l: 'Sync', t: 'select', options: syncOptions }, { l: 'Feedback', t: 'knob' },
+        { l: 'Mix', t: 'knob' }, { l: 'Rec Level', t: 'knob' }, { l: 'Head', t: 'knob' }, { l: 'Wow', t: 'knob' },
+        { l: 'Expanded Delay', t: 'toggle', on: 'On', off: 'Off' }, { l: 'Hiss', t: 'toggle', on: 'On', off: 'Off' },
+      ],
+      'Dyn Delay': [
+        { l: 'Delay', t: 'knob' }, { l: 'Sync', t: 'select', options: syncOptions }, { l: 'Feedback', t: 'knob' },
+        { l: 'Mix', t: 'knob' }, { l: 'Mode', t: 'select', options: ['Mono', 'Stereo', 'Cross', 'Pong'] },
+        { l: 'Ratio', t: 'knob' }, { l: 'Hi-Cut', t: 'knob' }, { l: 'Lo-Cut', t: 'knob' }, { l: 'Width', t: 'knob' },
+        { l: 'Em Rate', t: 'knob' }, { l: 'Em Feedback', t: 'knob' }, { l: 'Em Mix', t: 'knob' },
+      ],
+    },
+  },
+  fx1: {
+    note: "FX1/FX2 aren't free-form - they only host this fixed effect list (confirmed 2026-07-24), sharing the same EffectDefinitions entries the Mod slot and Graphic EQ already use, just wired to a different CC range here. Gray Compressor, Dyn3 Compressor, and Para EQ have no separate native slot on the unit at all. Para EQ has a genuine gap at Setting 3 - the \"(unused)\" control does nothing on real hardware, not a bug. None of this is hardware-tested yet. No live readback for per-knob values.",
+    default: 'Chorus/Vibrato',
+    effects: { ...modOnlyEffects, ...fx1fx2OnlyEffects },
+  },
+  fx2: {
+    note: 'Same effect list and real param data as the FX1 slot. None of this is hardware-tested yet. No live readback for per-knob values.',
+    default: 'Chorus/Vibrato',
+    effects: { ...modOnlyEffects, ...fx1fx2OnlyEffects },
+  },
+};
+
+// Simulates what a live Bulk Rig decode (RackController::requestBulkRig() + BulkRigParser)
+// populates once a preset is picked - real effect names, not placeholders.
+// `location` ("Bank 0 A1") is fixed - it's the rig's physical bank/slot position on the unit
+// (RackController::RigId), never editable. Only `name` is the user-editable rig name (what
+// RackController::setRigName() would actually change) - kept as a separate field so the rename UI
+// can't accidentally let you "edit" the location half of the label.
+const rigPresets = [
+  { id: 'b0a1', location: 'Bank 0 A1', name: 'Big Blue', subs: {
+    wah: 'Black Wah', vol: 'Volume Pedal', disto: 'Green JRC Disto', amp: '59 Tweed Lux', cab: '',
+    mod: 'Chorus/Vibrato', delay: 'Tape Echo', reverb: 'Eleven SR', fxloop: 'Fx Loop',
+    fx1: 'Graphic EQ', fx2: 'Dyn3 Compressor',
+  } },
+  { id: 'b0a2', location: 'Bank 0 A2', name: 'Clean Country', subs: {
+    wah: 'Sine Wah', vol: 'Volume Pedal', disto: 'Black Op Disto', amp: '64 Blk Panel Vib', cab: '',
+    mod: 'Orange Phaser', delay: 'BBD Delay', reverb: 'Blackpanel Spring Reverb', fxloop: 'Fx Loop',
+    fx1: 'Para EQ', fx2: 'Gray Compressor',
+  } },
+  { id: 'b0a3', location: 'Bank 0 A3', name: 'SLO 100', subs: {
+    wah: 'Sine Wah', vol: 'Volume Pedal', disto: 'DC_Disto', amp: 'Amp/Cab', cab: '',
+    mod: 'Flanger', delay: 'Tape Echo', reverb: 'Eleven SR', fxloop: 'Fx Loop',
+    fx1: 'Multi Chorus', fx2: 'Dyn3 Compressor',
+  } },
+];
+
+let currentPreset = null; // null until "Refresh Rig List" -> pick a preset, matching the real app
 let selected = 'disto';
+
+function currentSubLabel(blockId) {
+  if (!currentPreset) return '';
+  return rigPresets.find(p => p.id === currentPreset).subs[blockId] || '';
+}
 
 function renderPresetSelect() {
   const el = document.getElementById('presetSelect');
-  el.innerHTML = '';
-  Object.keys(presets).forEach(id => {
+  el.innerHTML = '<option value="">Select a preset...</option>';
+  rigPresets.forEach(p => {
     const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = presets[id].name;
-    if (id === currentPreset) opt.selected = true;
+    opt.value = p.id;
+    opt.textContent = p.location + ': ' + p.name;
+    if (p.id === currentPreset) opt.selected = true;
     el.appendChild(opt);
   });
-  el.onchange = () => { currentPreset = el.value; renderChain(); renderEditor(); };
+  el.onchange = () => { currentPreset = el.value || null; renderPresetSelect(); renderAll(); };
+
+  // Renaming only makes sense once a real preset (not the placeholder) is selected. This is a
+  // mockup-only local edit - the real app would send this through RackController::setRigName(),
+  // a real SysEx write to the unit that isn't hardware-validated yet (see
+  // docs/implementation-plan.md), so it's deliberately a separate, explicit Save step here rather
+  // than something that could happen silently (e.g. on blur).
+  document.getElementById('renameBtn').disabled = !currentPreset;
+  document.getElementById('renamePopover').classList.remove('open');
+
+  // Same reasoning as the rename button, but higher stakes: RackController::saveRig()
+  // OVERWRITES whatever is currently stored at that rig slot, with no undo - see
+  // signal-chain-editor-concept-notes.md "UI/UX design decisions".
+  document.getElementById('saveToUnitBtn').disabled = !currentPreset;
+  document.getElementById('saveConfirmPopover').classList.remove('open');
+}
+
+document.getElementById('refreshBtn').onclick = () => {
+  document.getElementById('statusText').textContent = 'Rig list loaded (208).';
+  renderPresetSelect();
+};
+
+const renameBtn = document.getElementById('renameBtn');
+const renamePopover = document.getElementById('renamePopover');
+const renameLocation = document.getElementById('renameLocation');
+const renameInput = document.getElementById('renameInput');
+
+renameBtn.onclick = () => {
+  if (!currentPreset) return;
+  const preset = rigPresets.find(p => p.id === currentPreset);
+  renameLocation.textContent = preset.location + ':';
+  renameInput.value = preset.name;
+  renamePopover.classList.add('open');
+  renameInput.focus();
+  renameInput.select();
+};
+
+document.getElementById('renameCancelBtn').onclick = () => {
+  renamePopover.classList.remove('open');
+};
+
+document.getElementById('renameSaveBtn').onclick = () => {
+  const preset = rigPresets.find(p => p.id === currentPreset);
+  if (preset && renameInput.value.trim()) {
+    preset.name = renameInput.value.trim();
+    renderPresetSelect();
+  }
+  renamePopover.classList.remove('open');
+};
+
+renameInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('renameSaveBtn').click();
+  if (e.key === 'Escape') document.getElementById('renameCancelBtn').click();
+});
+
+document.addEventListener('click', e => {
+  if (renamePopover.classList.contains('open') && ! renamePopover.contains(e.target) && e.target !== renameBtn)
+    renamePopover.classList.remove('open');
+  if (saveConfirmPopover.classList.contains('open') && ! saveConfirmPopover.contains(e.target) && e.target !== saveToUnitBtn)
+    saveConfirmPopover.classList.remove('open');
+});
+
+const saveToUnitBtn = document.getElementById('saveToUnitBtn');
+const saveConfirmPopover = document.getElementById('saveConfirmPopover');
+const saveConfirmText = document.getElementById('saveConfirmText');
+
+saveToUnitBtn.onclick = () => {
+  if (!currentPreset) return;
+  const preset = rigPresets.find(p => p.id === currentPreset);
+  saveConfirmText.textContent = 'Overwrite "' + preset.location + ': ' + preset.name
+    + '" on the unit with the current settings? This cannot be undone.';
+  saveConfirmPopover.classList.add('open');
+};
+
+document.getElementById('saveCancelBtn').onclick = () => {
+  saveConfirmPopover.classList.remove('open');
+};
+
+document.getElementById('saveConfirmBtn').onclick = () => {
+  const preset = rigPresets.find(p => p.id === currentPreset);
+  saveConfirmPopover.classList.remove('open');
+  if (preset)
+    document.getElementById('statusText').textContent = 'Saved to ' + preset.location + ': ' + preset.name + '.';
+};
+
+function escapeAttr(s) {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+function renderBlock(block) {
+  const isSel = block.id === selected;
+  const sub = currentSubLabel(block.id);
+  const btn = document.createElement('button');
+  btn.className = 'block' + (block.io ? ' io' : ' movable') + (isSel ? ' selected' : '');
+  // The sub-label gets a title attribute so its full value shows in a native tooltip on hover,
+  // even when the visible text itself is ellipsis-truncated to fit the slot's width.
+  btn.innerHTML = '<div class="label">' + block.label + '</div>' +
+    '<div class="divider"></div>' +
+    '<div class="sub"' + (sub ? ' title="' + escapeAttr(sub) + '"' : '') + '>' + sub + '</div>';
+  if (!block.io) btn.onclick = () => { selected = block.id; renderAll(); };
+  return btn;
+}
+
+// Amp and Cab must always stay adjacent (Amp immediately before Cab - see
+// signal-chain-editor-concept-notes.md) even though their pair's overall position in the chain
+// otherwise moves like any other block. Group both under one wrapping rectangle instead of two
+// independent-looking blocks, so that fixed-adjacency constraint reads visually, not just via the
+// arrow between them.
+function chainRenderItems() {
+  const items = [];
+  for (let i = 0; i < chainStructure.length; i++) {
+    if (chainStructure[i].id === 'amp' && chainStructure[i + 1] && chainStructure[i + 1].id === 'cab') {
+      items.push({ group: [chainStructure[i], chainStructure[i + 1]] });
+      i++; // Cab already consumed as part of the group
+    } else {
+      items.push({ block: chainStructure[i] });
+    }
+  }
+  return items;
 }
 
 function renderChain() {
   const el = document.getElementById('chain');
   el.innerHTML = '';
-  const chain = currentChain();
-  chain.forEach((block, i) => {
-    const isIo = block.kind === 'io';
-    const isSel = block.id === selected;
-    const btn = document.createElement('button');
-    btn.className = 'block' + (isIo ? ' io' : '') + (!block.fixed ? ' movable' : '') + (isSel ? ' selected' : '');
-    btn.innerHTML = '<div class="label">' + block.label + '</div>' +
-      (block.sub ? '<div class="sub">' + block.sub + '</div>' : '');
-    if (!isIo) btn.onclick = () => { selected = block.id; renderChain(); renderEditor(); };
-    el.appendChild(btn);
-    if (i < chain.length - 1) {
+  const items = chainRenderItems();
+
+  items.forEach((item, i) => {
+    if (item.group) {
+      const wrap = document.createElement('div');
+      wrap.className = 'amp-cab-group';
+      item.group.forEach((block, j) => {
+        wrap.appendChild(renderBlock(block));
+        if (j < item.group.length - 1) {
+          const innerArrow = document.createElement('span');
+          innerArrow.className = 'arrow';
+          wrap.appendChild(innerArrow);
+        }
+      });
+      el.appendChild(wrap);
+    } else {
+      el.appendChild(renderBlock(item.block));
+    }
+    if (i < items.length - 1) {
       const arrow = document.createElement('span');
       arrow.className = 'arrow';
-      arrow.textContent = '→';
       el.appendChild(arrow);
     }
   });
 }
 
 function renderEditor() {
-  const el = document.getElementById('editor');
-  const data = editors[selected];
-  if (!data) {
+  const el = document.getElementById('editorArea');
+  const slot = slotConfigs[selected];
+  if (!slot) {
     el.innerHTML = '<p class="empty">No editable parameters mapped for this block yet.</p>';
     return;
   }
-  let html = '<div class="editor-head"><span class="editor-title">' + data.name + '</span>' +
-    '<label class="bypass">Bypass <input type="checkbox" ' + (data.bypass ? 'checked' : '') + ' /></label></div>';
-  data.controls.forEach(c => {
-    html += '<div class="row"><span class="rlabel">' + c.label + '</span>';
-    if (c.type === 'knob') {
-      html += '<input type="range" min="0" max="127" value="' + c.value + '" /><span class="val">' + c.value + '</span>';
-    } else if (c.type === 'select') {
-      html += '<select style="flex:1;"><option>' + c.value + '</option></select>';
-    } else if (c.type === 'toggle') {
-      html += '<span style="font-size:13px;">' + (c.value ? c.onLabel : c.offLabel) + '</span>';
+
+  const effectNames = Object.keys(slot.effects);
+  const decoded = currentSubLabel(selected);
+  const currentEffect = effectNames.includes(decoded) ? decoded : slot.default;
+  const controls = slot.effects[currentEffect];
+
+  let html = '<div class="editor-row"><label>Effect</label><select id="effectSelect">';
+  effectNames.forEach(name => {
+    html += '<option' + (name === currentEffect ? ' selected' : '') + '>' + name + '</option>';
+  });
+  html += '</select></div>';
+  html += '<p class="note">' + slot.note + '</p>';
+  html += '<div class="bypass-row"><input type="checkbox" id="bypassCheck" /><label for="bypassCheck">Bypass</label></div>';
+
+  controls.forEach(c => {
+    html += '<div class="row"><span class="rlabel">' + c.l + '</span>';
+    if (c.t === 'knob') {
+      const v = 64;
+      html += '<input type="range" min="0" max="127" value="' + v + '" oninput="this.nextElementSibling.value=this.value" />' +
+        '<input class="valbox" value="' + v + '" readonly />';
+    } else if (c.t === 'select') {
+      html += '<select>' + c.options.map(o => '<option>' + o + '</option>').join('') + '</select>';
+    } else if (c.t === 'toggle') {
+      html += '<span class="toggle-state">' + c.off + '</span>';
     }
     html += '</div>';
   });
+
   el.innerHTML = html;
+  document.getElementById('effectSelect').onchange = e => { /* mockup only - not wired */ };
+}
+
+function renderAll() {
+  renderChain();
+  renderEditor();
 }
 
 renderPresetSelect();
-renderChain();
-renderEditor();
+document.getElementById('statusText').textContent = 'Click Refresh Rig List to fetch real rig names.';
+renderAll();
 </script>
 </body>
 </html>
