@@ -65,7 +65,9 @@ void SlotParamsPanel::resized()
     }
 }
 
-void SlotParamsPanel::setSlot (const SlotConfig& slot, int preferredEffectId, std::optional<bool> knownBypass)
+void SlotParamsPanel::setSlot (const SlotConfig& slot, int preferredEffectId, std::optional<bool> knownBypass,
+                                const std::map<juce::String, bool>& knownToggleStates,
+                                const std::map<juce::String, int>& knownKnobValues)
 {
     currentSlot = &slot;
     rebuildEffectList();
@@ -91,7 +93,7 @@ void SlotParamsPanel::setSlot (const SlotConfig& slot, int preferredEffectId, st
         }
     }
 
-    rebuildForSelectedEffect (knownBypass);
+    rebuildForSelectedEffect (knownBypass, knownToggleStates, knownKnobValues);
 }
 
 void SlotParamsPanel::clear()
@@ -133,7 +135,9 @@ void SlotParamsPanel::rebuildEffectList()
     effectSelector.setSelectedId (currentSlot->defaultEffectId, juce::dontSendNotification);
 }
 
-void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass)
+void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
+                                                 const std::map<juce::String, bool>& knownToggleStates,
+                                                 const std::map<juce::String, int>& knownKnobValues)
 {
     bypassToggle.reset();
     paramControls.clear();
@@ -177,7 +181,17 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass)
             paramsContent.addAndMakeVisible (*pc.slider);
 
             pc.slider->setRange (param.minValue, param.maxValue, param.step);
-            pc.slider->setValue ((param.minValue + param.maxValue) / 2.0, juce::dontSendNotification);
+
+            // Only seeded when SlotConfig.h's confirmedRawTagForKey() has an actual confirmed raw
+            // tag for this param (and, for knobs, knobRawToCcValue()'s Q31 conversion applied to
+            // it) - every other knob just keeps the neutral mid-range default, no guessing (see the
+            // class doc comment above).
+            auto knownIt = knownKnobValues.find (juce::String (param.key));
+            if (knownIt != knownKnobValues.end())
+                pc.slider->setValue (knownIt->second, juce::dontSendNotification);
+            else
+                pc.slider->setValue ((param.minValue + param.maxValue) / 2.0, juce::dontSendNotification);
+
             pc.slider->setSliderStyle (juce::Slider::LinearHorizontal);
             pc.slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 50, 24);
 
@@ -191,6 +205,13 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass)
         {
             pc.toggle = std::make_unique<juce::ToggleButton>();
             paramsContent.addAndMakeVisible (*pc.toggle);
+
+            // Only seeded when SlotConfig.h's confirmedRawTagForKey() has an actual confirmed raw
+            // tag for this param - every other toggle just keeps its default (unchecked) state, no
+            // guessing (see the class doc comment above).
+            auto knownIt = knownToggleStates.find (juce::String (param.key));
+            if (knownIt != knownToggleStates.end())
+                pc.toggle->setToggleState (knownIt->second, juce::dontSendNotification);
 
             auto* togglePtr = pc.toggle.get();
             pc.toggle->onClick = [this, cc, togglePtr]

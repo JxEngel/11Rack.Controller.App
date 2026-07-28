@@ -5,6 +5,7 @@
 #include "Rack/EffectDefinitions.h"
 #include "SlotConfig.h"
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -22,8 +23,14 @@
 //     otherwise this falls back to the slot's own default.
 //  2. There's no query mechanism for per-knob CC-controlled values - only a way to set them, never
 //     read them back. Controls start at a neutral default and only reflect what YOU set from here,
-//     not the unit's actual current state, until you move them. Bypass state is the one exception -
-//     see `knownBypass` below - it's a plain 0/1 in the Bulk Rig payload, no calibration needed.
+//     not the unit's actual current state, until you move them. Bypass state is one exception - see
+//     `knownBypass` below - it's a plain 0/1 in the Bulk Rig payload, no calibration needed. TOGGLE-
+//     and KNOB-kind controls are the same story (see `knownToggleStates`/`knownKnobValues`) - but
+//     only for the specific params SlotConfig.cpp's `bestEffortRawTagForKey()` has a raw tag for
+//     (exact-confirmed, or a documented name-similarity match against real data), and for knobs,
+//     converted via `knobRawToCcValue()`'s hardware-derived Q31 formula (confirmed 2026-07-28 via a
+//     full-range sweep of Wah's Filt knob - see docs/protocol-spec.md "Round 2"). Selectors have no
+//     confirmed encoding yet.
 class SlotParamsPanel : public juce::Component
 {
 public:
@@ -36,7 +43,14 @@ public:
     // in `slot.effectIds`, it's pre-selected instead of `slot.defaultEffectId` - use this when a
     // live Bulk Rig decode says which model is really loaded. If `knownBypass` is present, the
     // bypass toggle starts in that state instead of off - use this with the decoded `bypa` value.
-    void setSlot (const SlotConfig& slot, int preferredEffectId = -1, std::optional<bool> knownBypass = {});
+    // `knownToggleStates` (keyed by ParamDefinition::key) seeds any OTHER toggle-kind control this
+    // effect has a confirmed real value for - see SlotConfig.h's `confirmedRawTagForKey()`. Any key
+    // not present here just keeps its default (unchecked) state, same as today. `knownKnobValues`
+    // is the same idea for knob-kind controls, already converted to the 0-127 CC scale (see
+    // SlotConfig.h's `knobRawToCcValue()`) - any key not present keeps the neutral mid-range default.
+    void setSlot (const SlotConfig& slot, int preferredEffectId = -1, std::optional<bool> knownBypass = {},
+                  const std::map<juce::String, bool>& knownToggleStates = {},
+                  const std::map<juce::String, int>& knownKnobValues = {});
 
     // No slot selected - clears the panel to empty (used for chain blocks with no SlotConfig yet,
     // e.g. Volume Pedal/Amp/Cab/FX Loop - SignalChainComponent shows its own fallback label instead
@@ -45,7 +59,9 @@ public:
 
 private:
     void rebuildEffectList();
-    void rebuildForSelectedEffect (std::optional<bool> knownBypass = {});
+    void rebuildForSelectedEffect (std::optional<bool> knownBypass = {},
+                                   const std::map<juce::String, bool>& knownToggleStates = {},
+                                   const std::map<juce::String, int>& knownKnobValues = {});
 
     // Holds exactly one of slider/toggle/combo, matching `kind` - a plain tagged union would be
     // more compact, but this is clearer for a handful of controls that all need addAndMakeVisible.

@@ -12,6 +12,13 @@ decisions it embodies, what it does/doesn't prove yet, or open design questions 
 - Ported into the real app as `Source/SignalChainComponent.h`/`.cpp` (2026-07-27) - see
   docs/implementation-plan.md Milestone 5. The HTML mockup was kept around as a design reference,
   not wired to any real data itself.
+- The visual/UX redesign iterated on above (dark theme, hard-corner blocks with divider+tooltip,
+  Amp/Cab wrapping rectangle, bordered chain panel, label-less preset row, rename popover, Save to
+  Unit confirm popover) was ported into the real `SignalChainComponent` (2026-07-28). One behaviour
+  is deliberately NOT ported yet: clicking rename-Save or Save-to-Unit-Overwrite does not call
+  `RackController::setRigName()`/`saveRig()` - those are still flagged "NOT YET HARDWARE-VALIDATED"
+  in `RackController.h`, so the buttons currently only update local UI state and status text. Wiring
+  them to real hardware writes is a deliberate, separate decision for later.
 
 ## UI/UX design decisions
 
@@ -75,6 +82,20 @@ reverse-engineered from the HTML/JS later.
   generalized from a rule that originally only applied to the pencil icon button to apply to every
   `<button>` in this UI (including "Save to Unit"), so any future disabled control gets this for
   free instead of needing a one-off rule added each time.
+- **Chain blocks are drag-and-drop reorderable (2026-07-28, implemented directly in the real app -
+  not prototyped in this HTML mockup first), with three fixed rules**: Input is always first, Output
+  is always last, and neither can be picked up at all. Amp/Cab can't be picked up either, but their
+  combined position among the other blocks CAN still shift as a side effect of some OTHER block
+  being dragged past them - dropping a block anywhere before or after the Amp/Cab pair is fine, just
+  never in between Amp and Cab, since they must stay adjacent (one combined effect in
+  `EffectDefinitions`). Implemented via `juce::DragAndDropContainer`/`DragAndDropTarget` rather than
+  making every block hit-test its own left/right half: `SignalChainComponent`'s single
+  `ChainDropArea` (wrapping the whole row) already knows every arrow-gap's exact x-position from
+  laying out the row, and simply never records the one gap between an "amp" and "cab" block as a
+  valid drop point - the pair's atomicity falls out of the existing layout code instead of needing
+  special-cased logic. **This is a local/UI-only reorder** - it rearranges the in-memory chain order
+  and repaints, with no `RackController` call and no effect on the real unit (see "Still open" below
+  for the still-unresolved question of whether the unit even supports writing a new order back).
 
 ## Confirmed real-hardware structure (as of 2026-07-27)
 
@@ -95,9 +116,10 @@ reverse-engineered from the HTML/JS later.
 
 ## Still open
 
-- Whether the unit exposes chain *reordering* via MIDI/SysEx at all, or whether that would have to
-  be an app-only concept layered on top with no real effect on the unit - see
-  docs/implementation-plan.md "Not yet scheduled / parked".
+- Whether the unit exposes chain *reordering* via MIDI/SysEx at all, or whether this stays an
+  app-only concept with no real effect on the unit - the UI side (drag-and-drop reordering) now
+  exists (2026-07-28, see "UI/UX design decisions" above), but it's purely local; the underlying
+  protocol question is unchanged - see docs/implementation-plan.md "Not yet scheduled / parked".
 - Whether Cab has independently configurable parameters (cabinet type, mic model, mic position)
   beyond what's currently modeled - Amp/Cab is one combined effect in `EffectDefinitions`, so Cab has
   no independent data to show today.

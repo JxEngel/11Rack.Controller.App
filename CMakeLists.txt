@@ -74,6 +74,8 @@ juce_generate_juce_header(RackControllerTests)
 
 target_sources(RackControllerTests PRIVATE
     Tests/TestMain.cpp
+    Source/SlotConfig.cpp
+    Source/SlotConfigTests.cpp
     Source/Rack/SysExFrame.cpp
     Source/Rack/SysExFrameTests.cpp
     Source/Rack/SevenBitCodec.cpp

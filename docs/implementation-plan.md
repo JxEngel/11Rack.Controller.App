@@ -201,6 +201,15 @@ sequences already captured in [protocol-spec.md](protocol-spec.md) and
       see [protocol-spec.md](protocol-spec.md) "fourth round" for the Rig Description
       tuple-hypothesis confirmation, the newly-discovered MIDI Bank Select CC0/CC32 messages
       accompanying a rig select, and the unhandled async command `0x03` mystery.
+- [x] **Replaced the manual MIDI input/output dropdowns with auto-connect (2026-07-28).**
+      `MainComponent::connectToRack()` looks for a MIDI input and output whose name contains
+      "Eleven Rack" and connects directly - confirmed with the user that in this app's own device
+      lists, "Eleven Rack" only ever appears once per direction, so a name match is unambiguous (see
+      the resolved Milestone 4 item above on the earlier "2 in / 3 out" raw-OS-port count). Runs
+      automatically once at launch; the two dropdowns and the old "Refresh Devices" button are gone,
+      replaced by a single "Reconnect" button for the manual-retry case (unit plugged in/powered on
+      after launch). Build-verified (compiles/links); real-hardware auto-connect behavior itself
+      still needs a manual check with the unit plugged in.
 
 ## Milestone 4 — Hardware validation
 
@@ -209,8 +218,13 @@ Nothing above is trusted until confirmed against the real unit:
 - [x] Vendor/device ID bytes confirmed live (2026-07-24) via Universal SysEx Identity Request —
       see [protocol-spec.md](protocol-spec.md#hardware-validation-log). This validates the
       addressing bytes only, not yet any Eleven-Rack-specific command.
-- [ ] Identify what the OS-enumerated 2 MIDI inputs / 3 MIDI outputs (all named "Eleven Rack")
-      actually correspond to — which port is the control/SysEx port
+- [x] Identify what the OS-enumerated 2 MIDI inputs / 3 MIDI outputs (all named "Eleven Rack")
+      actually correspond to — which port is the control/SysEx port. **Resolved in practice
+      (2026-07-28)**: that "2 in / 3 out" count was from an earlier, separate raw-OS-port
+      observation - confirmed directly against this app's own `MidiTransport::getAvailableInputs()`/
+      `getAvailableOutputs()` lists, "Eleven Rack" only ever appears once per direction, so there's
+      no real ambiguity to resolve for this app's purposes. `MainComponent` now auto-connects by
+      name match instead of requiring a manual device picker - see `MainComponent::connectToRack()`.
 - [x] Send known ElevenHack-derived messages and confirm replies match expected structure —
       **Done (2026-07-24)**: effect count, main volume, current rig number, rig name, rig
       description, effect description, and bulk rig all tested live and decoded. See
@@ -590,12 +604,44 @@ Nothing above is trusted until confirmed against the real unit:
     directly, no conversion needed. Wired into `DiagnosticsComponent` (see above). Checked against
     two real rigs now (the original sample, plus "SLO 100" - see the slot-letter-position finding
     just above), both fully consistent with `EffectDefinitions`.
-  - Map each slot's raw field tags (`Driv`, `Levl`, `sld1`, ...) onto the matching
-    `ParamDefinition::key` for that effect, in the right order.
-  - Figure out the conversion from the Bulk Rig's signed-32-bit values to the 0-127 CC-scale values
-    `EffectEditorComponent`'s controls use - confirmed NOT a single uniform formula (`EffectAmpCab`'s
-    amp selector alone has both a compact 0-15 index AND a full-int32-range encoding for the same
-    selector), so this needs real hardware sweeps per param, not a guess.
+  - ~~Map each slot's raw field tags (`Driv`, `Levl`, `sld1`, ...) onto the matching
+    `ParamDefinition::key` for that effect~~ - **partially done (2026-07-27, "Round 1"): toggles
+    only**. Cross-referenced all 3 real decoded samples against every effect in
+    `EffectDefinitions.cpp` (see protocol-spec.md, "twenty-third round") and confirmed exact
+    tag-to-key matches for several effects' knobs, but since every knob value observed is an
+    untouched factory default, wiring knobs up now would mean guessing the 0-127 scale, not reading
+    real data — so only **toggle**-kind params were wired (0/1 needs no scale). Exactly one such
+    toggle is confirmed: Tape Echo's `Hiss`. Shipped as `SlotConfig::confirmedRawTagForKey()` (a
+    deliberately small "confirmed pairs only" table), threaded through
+    `SlotParamsPanel::setSlot()`'s new `knownToggleStates` param and
+    `SignalChainComponent::updateBlockDataFromRig()`. Build-verified, 5 new tests
+    (`SlotConfigTests.cpp`), 67 test groups total.
+  - ~~Extend raw-tag reconciliation beyond exact-string matches~~ - **done for Flanger/Multi Chorus
+    (2026-07-28, "twenty-fifth round")**: wired up the name-similarity pairs already identified but
+    left out of the exact-match table (Flanger's `PreD`/`Rate` -> bulk `PDly`/`Sped`; Multi Chorus's
+    `PreD`/`TriS`/`Widt` -> bulk `PDly`/`Wave`/`Wdth`) via a new, separate
+    `SlotConfig::bestEffortRawTagForKey()` (falls back from the exact-match table, keeps
+    `confirmedRawTagForKey()`'s stricter contract intact for anything that still needs it).
+    **Tape Echo's remaining unmatched keys (`Dely`/`Fdbk`/`Mix `/`RecL`/`Head`/`ExpD`) stay parked** -
+    no corresponding bulk tag was ever recorded for them, only that the CC key names don't match, so
+    there's nothing to extrapolate from without fabricating it. Build-verified, 3 new tests, 71 test
+    groups total.
+  - ~~Figure out the conversion from the Bulk Rig's signed-32-bit values to the 0-127 CC-scale
+    values `EffectEditorComponent`'s controls use~~ - **done for knob-kind params (2026-07-28,
+    "Round 2")**: user ran a real full-range sweep of Sine Wah's `Filt` knob (min/mid/max = raw
+    `-2147483648`/`0`/`2147483647`) - the standard Q31 fixed-point pattern (full signed 32-bit range,
+    linear, zero-centred). See protocol-spec.md "twenty-fourth round" for the formula. Applied to
+    every other knob-kind param `SlotConfig::bestEffortRawTagForKey()` has a raw tag for (Distortion's
+    knobs, Flanger's `Dpth`/`Fdbk`/`Rate`, Multi Chorus's knobs including `Widt`, Tape Echo's `Wow `,
+    Eleven SR's `Tone`, Wah's `VxCr`) as a documented extrapolation - only Wah's `Filt` is individually
+    hardware-confirmed, the rest assume one uniform encoding rather than per-effect testing.
+    Selector-kind params (`Sync`, `Type`, `sld6`, ...) are explicitly NOT covered - confirmed NOT a
+    single uniform formula there (`EffectAmpCab`'s amp selector alone has both a compact 0-15 index
+    AND a full-int32-range encoding for the same selector), so those still need individual real
+    hardware sweeps, not a guess. Shipped as `SlotConfig::knobRawToCcValue()`, threaded through
+    `SlotParamsPanel::setSlot()`'s new `knownKnobValues` param and
+    `SignalChainComponent::updateBlockDataFromRig()`. Build-verified, 1 new test, 68 test groups
+    total.
   - ~~Whether the lettered slot really is signal-chain position~~ - **confirmed (2026-07-27)**:
     compared a second real rig's ("SLO 100") independently-known real pedal order against its
     decoded slot letters - exact match, position for position (see "twenty-second round",

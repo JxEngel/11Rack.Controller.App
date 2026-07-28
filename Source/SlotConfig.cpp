@@ -1,5 +1,8 @@
 #include "SlotConfig.h"
 
+#include <limits>
+#include <map>
+
 const std::vector<SlotConfig>& slotConfigs()
 {
     static const std::vector<SlotConfig> configs = {
@@ -127,4 +130,95 @@ const SlotConfig* findSlotByName (const juce::String& name)
         if (slot.name == name)
             return &slot;
     return nullptr;
+}
+
+namespace
+{
+    // effectName -> (ParamDefinition::key -> Bulk Rig raw field tag), confirmed via cross-referencing
+    // 3 real decoded rigs (our own "JCM 800"/"SLO 100" captures, plus ElevenHack's "Metal Rythm 1"
+    // reference fixture) against EffectDefinitions.cpp - see docs/protocol-spec.md for the full
+    // cross-reference, including the near-miss pairs (e.g. "PreD"/"PDly") deliberately NOT included
+    // here because they're a plausible name-similarity guess, not a confirmed exact match.
+    const std::map<juce::String, std::map<juce::String, juce::String>>& confirmedTagTable()
+    {
+        static const std::map<juce::String, std::map<juce::String, juce::String>> table = {
+            { "Sine Wah", { { "Filt", "Filt" }, { "VxCr", "VxCr" } } },
+            { "Black Wah", { { "Filt", "Filt" }, { "VxCr", "VxCr" } } },
+            // All 5 Distortion models share ElevenHack's one internal Distortion field set - only
+            // DC_Disto was directly decoded, but the other 4 use the identical key strings for the
+            // knobs they each expose, so the same table applies by strong analogy, not guesswork.
+            { "Tri Knob Disto", { { "Driv", "Driv" }, { "Tone", "Tone" }, { "Levl", "Levl" } } },
+            { "Black Op Disto", { { "Driv", "Driv" }, { "Tone", "Tone" }, { "Levl", "Levl" } } },
+            { "Green JRC Disto", { { "Driv", "Driv" }, { "Tone", "Tone" }, { "Levl", "Levl" } } },
+            { "White Boost Disto", { { "Driv", "Driv" }, { "Treb", "Treb" }, { "Bass", "Bass" }, { "Levl", "Levl" } } },
+            { "DC_Disto", { { "Driv", "Driv" }, { "Treb", "Treb" }, { "Bass", "Bass" }, { "Levl", "Levl" } } },
+            // Flanger's "PreD"/"Rate" CC keys do NOT match the bulk tags "PDly"/"Sped" - excluded.
+            { "Flanger", { { "Dpth", "Dpth" }, { "Fdbk", "Fdbk" }, { "Sync", "Sync" } } },
+            // Multi Chorus's "PreD"/"TriS"/"Widt" CC keys do NOT match the bulk tags
+            // "PDly"/"Wave"/"Wdth" - excluded, even though semantically plausible.
+            { "Multi Chorus", { { "Dpth", "Dpth" }, { "Mix ", "Mix " }, { "Rate", "Rate" },
+                                 { "Sync", "Sync" }, { "Voic", "Voic" }, { "LoCt", "LoCt" } } },
+            // Tape Echo's "Dely"/"Fdbk"/"Mix "/"RecL"/"Head"/"ExpD" CC keys do NOT match the bulk
+            // tags "EDly"/"Sust"/"Vol "/"Rec "/"Tilt"/"4X  " - excluded. "Hiss" is the one toggle
+            // this reconciles with real confidence (see docs/implementation-plan.md Round 1).
+            { "Tape Echo", { { "Sync", "Sync" }, { "Hiss", "Hiss" }, { "Wow ", "Wow " } } },
+            // Eleven SR's selectors - not used for toggle-wiring (no toggles in this effect), kept
+            // for when selector reconciliation is tackled.
+            { "Eleven SR", { { "Tone", "Tone" }, { "Type", "Type" } } },
+        };
+        return table;
+    }
+
+    // Plausible name-similarity/positional matches against the same 3 real decoded rigs, for CC
+    // keys confirmedTagTable() deliberately excludes because the raw tag string differs - see
+    // docs/protocol-spec.md "twenty-third"/"twenty-fifth" rounds for how each was derived. Tape
+    // Echo's remaining unmatched keys (Dely/Fdbk/Mix /RecL/Head/ExpD) have no recorded
+    // correspondence at all - not even a name-similarity guess - so they're absent here too, not
+    // fabricated.
+    const std::map<juce::String, std::map<juce::String, juce::String>>& extrapolatedTagTable()
+    {
+        static const std::map<juce::String, std::map<juce::String, juce::String>> table = {
+            { "Flanger", { { "PreD", "PDly" }, { "Rate", "Sped" } } },
+            { "Multi Chorus", { { "PreD", "PDly" }, { "TriS", "Wave" }, { "Widt", "Wdth" } } },
+        };
+        return table;
+    }
+}
+
+std::optional<juce::String> confirmedRawTagForKey (const juce::String& effectName, const juce::String& ccKey)
+{
+    const auto& table = confirmedTagTable();
+    auto effectIt = table.find (effectName);
+    if (effectIt == table.end())
+        return std::nullopt;
+
+    auto keyIt = effectIt->second.find (ccKey);
+    if (keyIt == effectIt->second.end())
+        return std::nullopt;
+
+    return keyIt->second;
+}
+
+std::optional<juce::String> bestEffortRawTagForKey (const juce::String& effectName, const juce::String& ccKey)
+{
+    if (auto confirmed = confirmedRawTagForKey (effectName, ccKey))
+        return confirmed;
+
+    const auto& table = extrapolatedTagTable();
+    auto effectIt = table.find (effectName);
+    if (effectIt == table.end())
+        return std::nullopt;
+
+    auto keyIt = effectIt->second.find (ccKey);
+    if (keyIt == effectIt->second.end())
+        return std::nullopt;
+
+    return keyIt->second;
+}
+
+int knobRawToCcValue (int32_t raw)
+{
+    constexpr double span = 4294967295.0; // INT32_MAX - INT32_MIN, i.e. UINT32_MAX
+    double normalised = (static_cast<double> (raw) - static_cast<double> (std::numeric_limits<int32_t>::min())) / span;
+    return juce::roundToInt (normalised * 127.0);
 }

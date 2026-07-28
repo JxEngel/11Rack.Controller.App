@@ -629,6 +629,110 @@ Two follow-on fixes from this round:
   instead of the single-character one; `juce::String::charToString` fixes it. This is what made the
   letter-order comparison hard to read in the first place.
 
+**Twenty-third round (2026-07-27): cross-referenced all 3 real decoded rigs against
+`EffectDefinitions.cpp` to reconcile Bulk Rig raw field tags with live-CC `ParamDefinition::key`
+values - "Round 1" of mapping decoded values into the UI.** Went through every effect in the 7
+`SlotParamsPanel`-editable slots (Distortion/Wah/Mod/Reverb/Delay/FX1/FX2) we have real decoded data
+for, comparing our own "JCM 800" and "SLO 100" captures plus ElevenHack's "Metal Rythm 1" reference
+fixture against each effect's CC-side key list:
+
+- **Exact string matches** (safe, no guessing): Sine Wah/Black Wah (`Filt`,`VxCr`), DC_Disto
+  (`Driv`,`Treb`,`Bass`,`Levl` - and by strong analogy the other 4 Distortion models, which share
+  ElevenHack's one internal Distortion field set), Flanger (`Dpth`,`Fdbk`,`Sync` only - NOT
+  `PreD`/`Rate`, which turn out to differ from the bulk tags `PDly`/`Sped`), Multi Chorus (`Dpth`,
+  `Mix `,`Rate`,`Sync`,`Voic`,`LoCt` only - NOT `PreD`/`TriS`/`Widt`, which differ from `PDly`/
+  `Wave`/`Wdth`), Tape Echo (`Sync`,`Hiss`,`Wow ` only - NOT `Dely`/`Fdbk`/`Mix `/`RecL`/`Head`/
+  `ExpD`), Eleven SR (`Tone`,`Type`).
+- **Key finding that bounds this round's scope**: every single per-effect KNOB value across all 3
+  samples is byte-identical to the same effect's value in every OTHER sample - i.e. every knob we've
+  ever decoded is sitting at its untouched factory default. We have zero evidence of what a
+  non-default knob position looks like as a raw int32, so calibrating knobs to the 0-127 CC scale
+  right now would be a fabricated guess, not a derived formula. Confirmed with the user; deferred to
+  a follow-up hardware calibration test ("Round 2" - see docs/implementation-plan.md).
+- **Toggles are different: 0/1 is unambiguous regardless of scale**, so any toggle with a confirmed
+  exact-match raw tag can be safely read back right now. Across all 7 editable slots' effects,
+  exactly **one** such toggle exists in our data: Tape Echo's `Hiss`. Every other toggle in these
+  slots either has no real decoded data at all (Chorus/Vibrato, Vibe Phaser, BBD Delay) or only a
+  semantically-plausible-but-not-exact-string bulk tag (Multi Chorus's `TriS` "Tri/Sine" likely
+  corresponds to bulk tag `Wave`, Tape Echo's `ExpD` "Expanded Delay" likely corresponds to `4X  ` -
+  neither wired up, to avoid showing a wrong toggle state under a real-looking label).
+- Also confirmed, not wired into any UI yet: `Amp/Cab`'s `sld6` (amp model selector) is a compact
+  0-15 index matching `EffectDefinitions::ampModelOptions()`'s own index scale directly - resolves
+  the "known gap" flagged in `EffectDefinitions.h` about which of two possible amp-model encodings
+  the unit actually uses on the wire. Rig Params' `WorB` global also matches its own selector's value
+  scale exactly (`WorB=60` = "Guitar"). Neither is wired into any UI - Amp/Cab has no `SlotConfig`
+  entry yet, and Rig Params globals aren't editable at all - recorded here for whenever they are.
+- Shipped: `SlotConfig.h`/`.cpp`'s new `confirmedRawTagForKey()` (a small table of only the
+  confirmed-exact-match pairs above, returning `nullopt` for anything not directly confirmed -
+  deliberately data, not a positional or name-similarity heuristic), `SlotParamsPanel::setSlot()`'s
+  new `knownToggleStates` parameter, and `SignalChainComponent` populating/passing it through from a
+  live decode. Build-verified (both targets compile/link, 67 test groups pass, 5 new).
+
+**Twenty-fourth round (2026-07-28): "Round 2" hardware calibration test - knob raw-value scale
+confirmed.** The user ran a real full-range sweep of Sine Wah's `Filt` knob (the "Position"/wah-pedal
+knob) and decoded the Bulk Rig payload at three points:
+
+| Knob position | Raw `Filt` value |
+|---|---|
+| Fully down (min) | `-2147483648` (`INT32_MIN`) |
+| Exact centre | `0` |
+| Fully up (max) | `2147483647` (`INT32_MAX`) |
+
+This is the full native signed-32-bit range, used linearly, split exactly at zero - the standard
+**Q31 fixed-point** pattern (a normalized value stored at full 32-bit resolution: min/mid/max land
+exactly on `INT32_MIN`/`0`/`INT32_MAX`, not on some smaller or offset range). Conversion to the 0-127
+CC scale `SlotParamsPanel`'s sliders use:
+
+```
+t  = (raw - INT32_MIN) / 4294967295.0   // 0.0..1.0
+cc = round(t * 127)
+```
+
+**Scope decision (confirmed with the user)**: rather than range-test every individual knob, this
+formula is now applied to every OTHER knob-kind param `confirmedRawTagForKey()` already has a
+confirmed raw tag for (Distortion's `Driv`/`Tone`/`Levl`/`Treb`/`Bass`, Flanger's `Dpth`/`Fdbk`, Multi
+Chorus's `Dpth`/`Rate`/`Voic`/`LoCt`, Tape Echo's `Wow `, Eleven SR's `Tone`, Wah's `VxCr`) - on the
+assumption this is the unit's one general knob encoding, not something bespoke per effect. This is a
+well-supported hypothesis (Q31 is an extremely standard, exact-fit fixed-point format, not a
+coincidental-looking number), but only Wah's `Filt` has actually been range-tested - treat the rest
+as extrapolated, same treatment as the earlier "Vibe Phaser CC mapping" extrapolation. Selector-kind
+params (`Sync`, `Type`, etc.) are explicitly NOT covered by this formula and remain unconverted - they
+use a different, still-unconfirmed encoding (see the `Amp/Cab sld6` compact-index finding above,
+which shows selectors don't all share one scale either).
+
+Shipped: `SlotConfig.h`/`.cpp`'s new `knobRawToCcValue()`, `SlotParamsPanel::setSlot()`'s new
+`knownKnobValues` parameter, and `SignalChainComponent` populating/passing it through from a live
+decode (converting each confirmed knob-kind raw tag's value via `knobRawToCcValue()` instead of just
+toggle-kind ones). Build-verified (both targets compile/link, 68 test groups pass, 1 new covering the
+confirmed min/mid/max readings).
+
+**Twenty-fifth round (2026-07-28): extended reconciliation to the "near-miss" pairs "twenty-third
+round" deliberately excluded.** User asked to cover "all the different effects and their values" -
+this splits into two separate gaps: the value-scale formula (solved above) and knowing which raw
+field corresponds to which CC param at all (tag identification). For the latter, the twenty-third
+round had already turned up plausible name-similarity correspondences for two effects (real data,
+just not an exact string match) but left them unwired on principle:
+
+- **Flanger**: `PreD` (Pre-Delay) -> bulk tag `PDly`; `Rate` -> bulk tag `Sped`.
+- **Multi Chorus**: `PreD` -> `PDly`; `TriS` (Tri/Sine, a toggle) -> `Wave`; `Widt` (Width) -> `Wdth`.
+
+Both are now wired up via a new `SlotConfig::bestEffortRawTagForKey()`, kept as a table SEPARATE
+from `confirmedTagTable()` so `confirmedRawTagForKey()` still means "exact string match, no
+ambiguity" for anything that needs that stricter guarantee - `bestEffortRawTagForKey()` checks the
+confirmed table first, then falls back to this wider, explicitly-lower-confidence one.
+`SignalChainComponent::updateBlockDataFromRig()` now calls `bestEffortRawTagForKey()` instead of
+`confirmedRawTagForKey()`, so both toggle and knob reconciliation pick up the wider set.
+
+**Tape Echo's remaining unmatched keys (`Dely`/`Fdbk`/`Mix `/`RecL`/`Head`/`ExpD`) are explicitly NOT
+included** - unlike Flanger/Multi Chorus, no actual corresponding bulk tag was ever recorded for
+these, only the fact that the CC key names don't match anything. Without knowing what they DO match,
+even a name-similarity guess would be fabricated, not inferred - this stays parked until either a
+fresh Tape Echo decode surfaces the real unmatched tags, or the user recalls them.
+
+Build-verified (both targets compile/link, 71 test groups pass, 3 new covering
+`bestEffortRawTagForKey()`'s fallback behaviour and confirming `confirmedRawTagForKey()` itself is
+unaffected by the wider table).
+
 ## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
 
 See [project-overview.md](project-overview.md) "Prior Art Found" section for the full writeup.

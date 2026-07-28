@@ -47,8 +47,10 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
 ## Running it
 
 - Status bar has a **Run** (▷) button, or Command Palette > **"CMake: Run Without Debugging"**.
-- The window has MIDI input/output device pickers and a Refresh button at the top (shared across
-  everything below), and four tabs:
+- The window auto-connects to the Eleven Rack on launch (2026-07-28) - it looks for a MIDI input
+  and output whose name contains "Eleven Rack" and connects directly, no device picker needed. A
+  **"Reconnect"** button stays at the top (shared across everything below) for retrying if the unit
+  wasn't plugged in/powered on yet at launch. Below that, the tabs:
   - **Diagnostics** — the original protocol test harness: a known-command picker, the one
     validated write (Select Rig), a raw-send button for generic diagnostics (Universal SysEx
     Identity Request), a MIDI CC test tool, an Effect Index spinner + Request Effect Description
@@ -129,13 +131,11 @@ session) — see [implementation-plan.md](implementation-plan.md) Milestone 3 fo
 
 ## Testing against the actual hardware
 
-1. Connect the Eleven Rack via USB.
-2. In the running app, click **"Refresh Devices"**. If the unit doesn't show up in either
-   dropdown, check Windows Device Manager to see how it's actually enumerating — see the open
-   question about USB-MIDI class compliance in
-   [project-overview.md](project-overview.md).
-3. Select it in both the MIDI Input and MIDI Output dropdowns.
-4. Click **"Send Identity Request"** and watch the log pane — a reply (or the absence of one)
+1. Connect the Eleven Rack via USB - the app auto-connects on launch, so if it's already running,
+   just click **"Reconnect"**. If the status label still says "Eleven Rack not found" afterwards,
+   check Windows Device Manager to see how it's actually enumerating — see the open question about
+   USB-MIDI class compliance in [project-overview.md](project-overview.md).
+2. Click **"Send Identity Request"** and watch the log pane — a reply (or the absence of one)
    is real protocol data, feeding back into [protocol-spec.md](protocol-spec.md).
 
 ## Project layout
