@@ -317,14 +317,21 @@ void SignalChainComponent::GroupBorder::paint (juce::Graphics& g)
 
 void SignalChainComponent::ChainDropArea::paintOverChildren (juce::Graphics& g)
 {
-    if (hoveredGapIndex < 0 || hoveredGapIndex >= (int) dropGaps.size())
+    if (placeholderX < 0)
         return;
 
-    // Drawn OVER children (not just behind) so the insertion indicator stays visible regardless of
-    // what block/arrow/group border happens to be underneath it.
-    int x = dropGaps[(size_t) hoveredGapIndex].first;
+    // Drawn OVER children (not just behind) so the placeholder stays visible regardless of what
+    // block/arrow/group border happens to be underneath it. SignalChainComponent::
+    // updateChainHoverPreview() has already both closed the hole at the dragged block's origin AND
+    // opened a gap at the drop point (shifting blocks/groups left or right as needed), so this
+    // blank, block-shaped rect at placeholderX now lands in a genuinely empty gap instead of
+    // overlaying real content.
+    juce::Rectangle<int> placeholder (placeholderX, kChainPanelPadding + kGroupPadding, kBlockWidth, kBlockHeight);
+
+    g.setColour (findColour (juce::ComboBox::backgroundColourId));
+    g.fillRect (placeholder);
     g.setColour (juce::Colours::dodgerblue);
-    g.fillRect (x - 1, 0, 2, getHeight());
+    g.drawRect (placeholder, 1);
 }
 
 bool SignalChainComponent::ChainDropArea::isInterestedInDragSource (const SourceDetails& dragSourceDetails)
@@ -344,8 +351,7 @@ void SignalChainComponent::ChainDropArea::itemDragMove (const SourceDetails& dra
 
 void SignalChainComponent::ChainDropArea::itemDragExit (const SourceDetails&)
 {
-    hoveredGapIndex = -1;
-    repaint();
+    setHoveredGapIndex (-1);
 }
 
 void SignalChainComponent::ChainDropArea::itemDropped (const SourceDetails& dragSourceDetails)
@@ -353,8 +359,7 @@ void SignalChainComponent::ChainDropArea::itemDropped (const SourceDetails& drag
     if (hoveredGapIndex >= 0 && hoveredGapIndex < (int) dropGaps.size() && onDropped)
         onDropped (dragSourceDetails.description.toString(), dropGaps[(size_t) hoveredGapIndex].second);
 
-    hoveredGapIndex = -1;
-    repaint();
+    setHoveredGapIndex (-1);
 }
 
 void SignalChainComponent::ChainDropArea::updateHoveredGap (juce::Point<int> localPosition)
@@ -372,11 +377,40 @@ void SignalChainComponent::ChainDropArea::updateHoveredGap (juce::Point<int> loc
         }
     }
 
-    if (closestIndex != hoveredGapIndex)
-    {
-        hoveredGapIndex = closestIndex;
-        repaint();
-    }
+    setHoveredGapIndex (closestIndex);
+}
+
+void SignalChainComponent::ChainDropArea::setHoveredGapIndex (int newIndex)
+{
+    if (newIndex == hoveredGapIndex)
+        return;
+
+    hoveredGapIndex = newIndex;
+    repaint();
+
+    if (onHoverChanged)
+        onHoverChanged (hoveredGapIndex);
+}
+
+void SignalChainComponent::dragOperationStarted (const juce::DragAndDropTarget::SourceDetails& sourceDetails)
+{
+    draggedBlockComponent = sourceDetails.sourceComponent;
+    draggedBlockId = sourceDetails.description.toString();
+    if (draggedBlockComponent != nullptr)
+        draggedBlockComponent->setVisible (false);
+}
+
+void SignalChainComponent::dragOperationEnded (const juce::DragAndDropTarget::SourceDetails&)
+{
+    // Null by now if the drop succeeded - handleChainReorder() already rebuilt every Block from
+    // scratch (destroying the dragged one) before this fires. Only reached with a live pointer on
+    // an invalid/cancelled drop, where restoring visibility IS the "snap back" - see the class doc
+    // comment on dragOperationStarted()/dragOperationEnded() in SignalChainComponent.h.
+    if (draggedBlockComponent != nullptr)
+        draggedBlockComponent->setVisible (true);
+
+    draggedBlockComponent = nullptr;
+    draggedBlockId = {};
 }
 
 SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUse)
@@ -400,6 +434,7 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
     {
         handleChainReorder (draggedId, insertBeforeChainIndex);
     };
+    chainContent.onHoverChanged = [this] (int hoveredGapIndex) { updateChainHoverPreview (hoveredGapIndex); };
 
     rigEntries.resize ((size_t) (RackController::kNumBanks * RackController::kRigsPerBank));
     rigStatusLabel.setText ("Click Refresh Rig List to fetch real rig names.", juce::dontSendNotification);
@@ -514,6 +549,10 @@ void SignalChainComponent::rebuildChainUi()
     blockComponents.clear();
     arrowLabels.clear();
     groupBorders.clear();
+    blockBaseX.clear();
+    arrowBaseX.clear();
+    groupBaseX.clear();
+    groupChainIndex.clear();
     chainContent.removeAllChildren();
     chainContent.dropGaps.clear();
 
@@ -542,6 +581,7 @@ void SignalChainComponent::rebuildChainUi()
         block->onClick = [this, i] { selectBlock (i); };
         chainContent.addAndMakeVisible (*block);
         blockComponents.push_back (std::move (block));
+        blockBaseX.push_back (x);
         x += kBlockWidth;
 
         if (i < (int) chain.size() - 1)
@@ -552,12 +592,15 @@ void SignalChainComponent::rebuildChainUi()
             arrow->setBounds (x, blockY, kArrowWidth, kBlockHeight);
             chainContent.addAndMakeVisible (*arrow);
             arrowLabels.push_back (std::move (arrow));
+            arrowBaseX.push_back (x);
 
             // Every arrow-gap is a valid drop point EXCEPT the one between an "amp" block and its
             // "cab" successor - simply not recorded, so a drop can never land between them and
-            // split the pair. See ChainDropArea's doc comment in SignalChainComponent.h.
+            // split the pair. See ChainDropArea's doc comment in SignalChainComponent.h. The
+            // recorded x (x + kArrowWidth) is exactly where the NEXT block's own base x will be -
+            // see updateChainHoverPreview(), which shifts anything at or past this x aside.
             if (! startsAmpCabGroup)
-                chainContent.dropGaps.push_back ({ x + kArrowWidth / 2, i + 1 });
+                chainContent.dropGaps.push_back ({ x + kArrowWidth, i + 1 });
 
             x += kArrowWidth;
         }
@@ -573,13 +616,91 @@ void SignalChainComponent::rebuildChainUi()
             chainContent.addAndMakeVisible (*group);
             group->toBack();
             groupBorders.push_back (std::move (group));
+            groupBaseX.push_back (groupStartX - kGroupPadding);
+            groupChainIndex.push_back (i); // the Amp block's own chain index
         }
     }
 
     // Matching trailing padding on the right, and top+bottom (rowHeight already covers the row
     // itself) - kept exactly equal to chainViewport's own height in resized() so the content fills
     // the panel evenly instead of leaving empty space below when no horizontal scrolling is needed.
-    chainContent.setSize (x + kChainPanelPadding, rowHeight + 2 * kChainPanelPadding);
+    // This is the row's NATURAL width, with no hover-shift applied - see updateChainHoverPreview(),
+    // which temporarily grows chainContent by one block+arrow width while a drag is hovering, so
+    // the shifted-right tail doesn't get clipped by the viewport.
+    chainContentBaseWidth = x + kChainPanelPadding;
+    chainContent.setSize (chainContentBaseWidth, rowHeight + 2 * kChainPanelPadding);
+}
+
+void SignalChainComponent::updateChainHoverPreview (int hoveredGapIndex)
+{
+    constexpr int shiftAmount = kBlockWidth + kArrowWidth;
+
+    bool hovering = hoveredGapIndex >= 0 && hoveredGapIndex < (int) chainContent.dropGaps.size();
+
+    // Find the dragged block's OWN original chain index too - without it, this can only open a
+    // gap at the drop point (the old behaviour), not ALSO close the hole left behind at the
+    // dragged block's origin, which is what actually made it look like "two blocks" - see the
+    // conversation this was fixed from. Not found (e.g. between drags) just means no shift at all.
+    int draggedIdx = -1;
+    if (hovering)
+        for (int i = 0; i < (int) chain.size(); ++i)
+            if (chain[(size_t) i].id == draggedBlockId)
+            {
+                draggedIdx = i;
+                break;
+            }
+    hovering = hovering && draggedIdx >= 0;
+
+    int insertBeforeIdx = hovering ? chainContent.dropGaps[(size_t) hoveredGapIndex].second : -1;
+    // Forward move (dragging something later in the chain): everything strictly between the drag
+    // origin and the drop point shifts LEFT to close the hole. Backward move (dragging something
+    // earlier): everything from the drop point up to (not including) the drag origin shifts RIGHT
+    // to make room. Either way, exactly one block+arrow width of space nets out at the drop point -
+    // see the derivation in the conversation this was worked out from (verified against several
+    // worked examples: arrows never need to move, only blocks/groups do, since a single item moving
+    // by whole block+arrow slots always keeps the arrow grid aligned).
+    bool forwardMove = hovering && insertBeforeIdx > draggedIdx;
+    bool backwardMove = hovering && insertBeforeIdx <= draggedIdx;
+
+    auto shiftForChainIndex = [&] (int chainIndex) -> int
+    {
+        if (forwardMove && chainIndex > draggedIdx && chainIndex < insertBeforeIdx)
+            return -shiftAmount;
+        if (backwardMove && chainIndex >= insertBeforeIdx && chainIndex < draggedIdx)
+            return shiftAmount;
+        return 0;
+    };
+
+    for (size_t i = 0; i < blockComponents.size(); ++i)
+    {
+        int shift = shiftForChainIndex ((int) i);
+        blockComponents[i]->setTopLeftPosition (blockBaseX[i] + shift, blockComponents[i]->getY());
+    }
+    for (size_t i = 0; i < groupBorders.size(); ++i)
+    {
+        int shift = shiftForChainIndex (groupChainIndex[i]);
+        groupBorders[i]->setTopLeftPosition (groupBaseX[i] + shift, groupBorders[i]->getY());
+    }
+    // Arrows deliberately never shift - see the comment above; they already line up correctly
+    // against the shifted blocks/groups without needing to move themselves.
+
+    if (hovering)
+    {
+        // Forward moves land the placeholder among the now-left-shifted blocks, so it needs the
+        // same left shift; backward moves land it at its original (unshifted) gap position.
+        int placeholderX = chainContent.dropGaps[(size_t) hoveredGapIndex].first + (forwardMove ? -shiftAmount : 0);
+        chainContent.placeholderX = placeholderX;
+    }
+    else
+    {
+        chainContent.placeholderX = -1;
+    }
+
+    // Temporarily make room for the shifted-right tail so the viewport doesn't clip it - restored
+    // to the natural width as soon as the hover ends.
+    chainContent.setSize (hovering ? chainContentBaseWidth + shiftAmount : chainContentBaseWidth,
+                          chainContent.getHeight());
+    chainContent.repaint();
 }
 
 void SignalChainComponent::selectBlock (int index)

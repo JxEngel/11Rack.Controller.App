@@ -121,11 +121,13 @@ private:
 
     // The single drop target for the whole row, replacing a plain juce::Component. `dropGaps` is
     // rebuilt by rebuildChainUi() every time the row is laid out: one entry per valid insertion
-    // point (arrow-centre x in this component's own coordinates, paired with the `chain` index a
-    // drop there should insert before) - EVERY arrow-gap except the one between an "amp" block and
-    // its "cab" successor, which is simply never added, so that pair can never be split by a drop
-    // landing between them. `onDropped` is set once by SignalChainComponent to route into
-    // handleChainReorder().
+    // point (the x where the block AFTER this gap starts, in this component's own coordinates -
+    // paired with the `chain` index a drop there should insert before) - EVERY arrow-gap except the
+    // one between an "amp" block and its "cab" successor, which is simply never added, so that pair
+    // can never be split by a drop landing between them. `onDropped` is set once by
+    // SignalChainComponent to route into handleChainReorder(); `onHoverChanged` into
+    // updateChainHoverPreview(), which shifts the other blocks aside to open up a real block-shaped
+    // gap at the hovered drop point instead of just overlaying an indicator on top of them.
     //
     // MUST be public inheritance, not private - JUCE's internal drag-and-drop machinery finds
     // targets via dynamic_cast<DragAndDropTarget*> starting from a plain Component*, which is a
@@ -137,8 +139,16 @@ private:
                            public juce::DragAndDropTarget
     {
     public:
-        std::vector<std::pair<int, int>> dropGaps; // (gap centre x, chain index to insert before)
+        std::vector<std::pair<int, int>> dropGaps; // (gap x = next block's base x, chain index to insert before)
         std::function<void (const juce::String& draggedId, int insertBeforeChainIndex)> onDropped;
+        std::function<void (int hoveredGapIndex)> onHoverChanged; // -1 when nothing is hovered
+
+        // Where SignalChainComponent::updateChainHoverPreview() wants the blank placeholder drawn -
+        // NOT simply dropGaps[hoveredGapIndex].first, since a forward move needs it shifted left by
+        // one block+arrow width to land among the now-left-shifted blocks (see that method). -1 to
+        // draw nothing. Set directly by SignalChainComponent, a plain data field rather than a
+        // getter/setter pair since this class has no invariant to protect around it.
+        int placeholderX = -1;
 
         void paintOverChildren (juce::Graphics& g) override;
 
@@ -150,6 +160,7 @@ private:
         void itemDropped (const SourceDetails&) override;
 
         void updateHoveredGap (juce::Point<int> localPosition);
+        void setHoveredGapIndex (int newIndex);
 
         int hoveredGapIndex = -1;
     };
@@ -176,6 +187,12 @@ private:
     // Cab (those are never draggable - see Block::draggable).
     void handleChainReorder (const juce::String& draggedId, int insertBeforeChainIndex);
 
+    // Live preview while a drag is hovering (see ChainDropArea::onHoverChanged): shifts every
+    // block/arrow/group whose base x is at or past the hovered gap to the right by one block+arrow
+    // width, opening up a real gap instead of just overlaying an indicator on top of them. Pass -1
+    // to restore everything to its un-shifted base position (drag exited or dropped).
+    void updateChainHoverPreview (int hoveredGapIndex);
+
     // Current selection's rig id/name, or nullopt if only the "Select a preset..." placeholder is
     // showing - used by both popups instead of re-deriving it from presetSelector each time.
     std::optional<Rack::RackController::RigId> currentRigId() const;
@@ -196,6 +213,20 @@ private:
     void onRigNameFetchComplete() override;
     void onBulkRigReceived (const std::vector<uint8_t>& decodedTfxBytes) override;
 
+    // juce::DragAndDropContainer - hides the source Block while it's being dragged, so it looks
+    // properly "picked up" (removed from the row) instead of a dragged copy AND the still-visible
+    // original both showing at once. On a successful drop, handleChainReorder() already rebuilds
+    // every Block from scratch (destroying the dragged one), so draggedBlockComponent naturally goes
+    // null by the time dragOperationEnded() fires - guarded via SafePointer rather than a raw
+    // pointer specifically so that's safe, not a dangling-pointer access. On an invalid/cancelled
+    // drop (dropped outside the chain row, or Escape), nothing was ever rebuilt, so restoring
+    // visibility here IS what makes the block "snap back" to where it was.
+    void dragOperationStarted (const juce::DragAndDropTarget::SourceDetails&) override;
+    void dragOperationEnded (const juce::DragAndDropTarget::SourceDetails&) override;
+
+    juce::Component::SafePointer<juce::Component> draggedBlockComponent;
+    juce::String draggedBlockId; // set alongside draggedBlockComponent - used by updateChainHoverPreview()
+
     juce::ComboBox presetSelector;
     juce::TextButton renameButton { juce::String (juce::CharPointer_UTF8 ("\xe2\x9c\x8e")) }; // pencil glyph
     juce::TextButton saveToUnitButton { "Save to Unit" };
@@ -209,6 +240,17 @@ private:
     std::vector<std::unique_ptr<Block>> blockComponents;
     std::vector<std::unique_ptr<juce::Label>> arrowLabels;
     std::vector<std::unique_ptr<GroupBorder>> groupBorders;
+
+    // Each component's un-shifted x, as laid out by rebuildChainUi() - parallel to
+    // blockComponents/arrowLabels/groupBorders. updateChainHoverPreview() temporarily offsets a
+    // component's actual x away from this during a drag hover; these are what it offsets FROM, and
+    // what everything snaps back to once the hover ends.
+    std::vector<int> blockBaseX, arrowBaseX, groupBaseX;
+    std::vector<int> groupChainIndex; // the Amp block's chain index, one entry per groupBorders - lets
+                                       // updateChainHoverPreview() decide a group's shift the same way
+                                       // it decides a block's, by chain-index range membership
+    int chainContentBaseWidth = 0; // chainContent's width with no hover shift applied
+
     int selectedIndex = -1;
 
     SlotParamsPanel paramsPanel;
