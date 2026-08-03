@@ -254,6 +254,28 @@
   .rocker-switch[data-on="true"] .off-half { color: #6b7178; }
   .rocker-switch:not([data-on="true"]) .off-half { color: #e8e8e8; }
   .bypass-toggle-row { display: flex; align-items: center; gap: 10px; }
+
+  /* Tap Tempo button (matches Source/TapTempoButton.cpp's hand-drawn Component - dark neutral
+     metal face, same family as the rocker switch's bezel/paddle palette rather than the gold knob
+     face, with a small center LED that flashes amber briefly on each press then fades back to its
+     dim off colour). Reviewed against a gold-faced variant and a whole-rim-glow variant first, see
+     signal-chain-editor-concept-notes.md. Fires on mousedown (see initTapTempoButton()), not the
+     more typical click-on-release, matching the real Component's own choice - a physical tap
+     registers on contact, not on release. */
+  .tap-tempo-button {
+    /* 54px - matches .gold-knob's own .knob-face circle (the actual metal knob you'd turn), not
+       the full 84px .gold-knob block which also includes the surrounding dot ring - per the
+       user's explicit call, sized to the knob itself rather than the knob-plus-dots bounding box. */
+    position: relative; width: 54px; height: 54px; border-radius: 50%; flex-shrink: 0;
+    border: 5px solid #050607; box-sizing: border-box; cursor: pointer; padding: 0;
+    background: radial-gradient(circle at 35% 30%, #5a5f64 0%, #3a3d40 55%, #26292b 100%);
+  }
+  .tap-tempo-button .led {
+    position: absolute; left: 50%; top: 50%; width: 11px; height: 11px;
+    transform: translate(-50%, -50%); border-radius: 50%; background: #4a2f10;
+    transition: background .05s ease, box-shadow .05s ease;
+  }
+  .tap-tempo-button .led.lit { background: #ffb347; box-shadow: 0 0 8px 2px rgba(255,179,71,.85); }
 </style>
 </head>
 <body>
@@ -310,16 +332,23 @@
     <div class="global-group">
       <span class="glabel">Tuner</span>
       <div class="gcontrol-row">
-        <button id="tunerOnBtn">Tuner On</button>
-        <button id="tunerOffBtn">Tuner Off</button>
+        <button type="button" class="rocker-switch" id="tunerSwitch" data-on="false" aria-pressed="false">
+          <div class="paddle">
+            <div class="half on-half">ON</div>
+            <div class="seam"></div>
+            <div class="half off-half">OFF</div>
+          </div>
+        </button>
       </div>
-      <span class="tuner-status" id="tunerStatus">Tuner state: unknown (no query exists)</span>
+      <span class="tuner-status" id="tunerStatus">No live query - reflects the last thing set or confirmed</span>
     </div>
 
     <div class="global-group">
       <span class="glabel">Tap Tempo</span>
       <div class="gcontrol-row">
-        <button id="tapTempoBtn">Tap</button>
+        <button type="button" class="tap-tempo-button" id="tapTempoBtn" aria-label="Tap Tempo">
+          <div class="led" id="tapTempoLed"></div>
+        </button>
       </div>
     </div>
 
@@ -370,12 +399,13 @@
     </div>
   </div>
   <p class="note">Main Volume is live two-way synced with the unit, shown on its own 0.0-10.0 display
-    scale (not the raw signed wire value). Tuner has no query anywhere in the protocol - the status
-    line only ever reflects a real device-confirmed change, never an optimistic guess from clicking a
-    button, which is why On/Off are separate buttons rather than a single toggle. Tap Tempo (CC 64) is
-    momentary - one tap per click, nothing to read back or sync. FX Loop uses fixed CCs (Bypass 107,
-    Send 19, Return 108, Mix 88), not the "Setting N" positional scheme every effect slot below uses.
-    No live readback for FX Loop's three knobs, same limitation as every other slot's per-knob values.</p>
+    scale (not the raw signed wire value). Tuner has no query anywhere in the protocol - the switch's
+    own state is necessarily optimistic (whatever was last clicked or confirmed), so the status line
+    below it stays visible to keep that distinction honest rather than implying more certainty than
+    there is. Tap Tempo (CC 64) is momentary - one tap per click, nothing to read back or sync. FX
+    Loop uses fixed CCs (Bypass 107, Send 19, Return 108, Mix 88), not the "Setting N" positional
+    scheme every effect slot below uses. No live readback for FX Loop's three knobs, same limitation
+    as every other slot's per-knob values.</p>
 
   <p class="chain-label">Signal chain</p>
   <div class="chain-panel">
@@ -833,19 +863,19 @@ function renderAll() {
 
 // Rig globals (Source/SignalChainComponent.cpp) - rig-level utilities with exactly one instance
 // each (Main Volume, Tuner, Tap Tempo, FX Loop), unlike the per-effect slots above which pick from
-// several models. Tuner state only ever reflects a real device-confirmed change (there's no query
-// in the protocol), so these buttons simulate that confirmation round-trip rather than optimistically
-// flipping the status line the instant you click.
-document.getElementById('tunerOnBtn').onclick = () => {
-  document.getElementById('tunerStatus').textContent = 'Tuner state (device-confirmed): On';
-};
-document.getElementById('tunerOffBtn').onclick = () => {
-  document.getElementById('tunerStatus').textContent = 'Tuner state (device-confirmed): Off';
-};
-// Momentary - nothing to read back or sync, so the mock just confirms the tap was sent.
-document.getElementById('tapTempoBtn').onclick = () => {
+// several models.
+// Momentary - nothing to read back or sync, so the mock just confirms the tap was sent. Fires on
+// mousedown (not click, which only resolves on mouseup) to match TapTempoButton.cpp's own
+// mouseDown-fires-immediately behaviour - a physical tap registers on contact, not on release.
+// The LED flashes for the same 150ms (kFlashMs) as the real Component's one-shot Timer.
+let tapTempoFlashTimer = null;
+document.getElementById('tapTempoBtn').addEventListener('mousedown', () => {
+  const led = document.getElementById('tapTempoLed');
+  led.classList.add('lit');
+  if (tapTempoFlashTimer) clearTimeout(tapTempoFlashTimer);
+  tapTempoFlashTimer = setTimeout(() => led.classList.remove('lit'), 150);
   document.getElementById('statusText').textContent = 'Tap Tempo sent.';
-};
+});
 
 // Gold metallic knob (see the ".gold-knob" CSS above) - drives the custom-drawn pointer/dot-ring
 // from the real, still-fully-functional <input type=range> underneath (kept invisible but on top,
@@ -898,6 +928,18 @@ renderAll();
 // (switches) onto those same editor controls.
 initGoldKnobs(document.querySelector('.globals-panel'));
 initRockerSwitches(document.querySelector('.globals-panel'));
+
+// Tuner is a single rocker switch (2026-08-03, replacing separate Tuner On/Tuner Off buttons -
+// see SignalChainComponent.h's tunerToggle doc comment) - the generic click-to-flip is already
+// wired by initRockerSwitches() just above; this listener is attached AFTER that one on purpose
+// (event listeners fire in attachment order) so it reads tunerSwitch's data-on AFTER the generic
+// listener has already flipped it, not the stale pre-click value. It simulates the same
+// device-confirmed round-trip the real onTunerStateReceived() callback drives, since there's
+// still no live query in the protocol.
+document.getElementById('tunerSwitch').addEventListener('click', () => {
+  const isOn = document.getElementById('tunerSwitch').dataset.on === 'true';
+  document.getElementById('tunerStatus').textContent = 'Device-confirmed: ' + (isOn ? 'On' : 'Off');
+});
 </script>
 </body>
 </html>

@@ -489,8 +489,7 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
     addAndMakeVisible (volumeLabel);
     addAndMakeVisible (volumeSlider);
     addAndMakeVisible (tunerLabel);
-    addAndMakeVisible (tunerOnButton);
-    addAndMakeVisible (tunerOffButton);
+    addAndMakeVisible (tunerToggle);
     addAndMakeVisible (tunerStatusLabel);
     addAndMakeVisible (tapTempoLabel);
     addAndMakeVisible (tapTempoButton);
@@ -547,13 +546,15 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
         controller.setMainVolume (displayToRaw (volumeSlider.getValue()));
     };
 
-    tunerStatusLabel.setText ("Tuner state: unknown (no query exists)", juce::dontSendNotification);
+    tunerStatusLabel.setText ("No live query - reflects the last thing set or confirmed", juce::dontSendNotification);
 
-    tunerOnButton.onClick = [this] { controller.setTunerOn (true); };
-    tunerOffButton.onClick = [this] { controller.setTunerOn (false); };
+    // juce::ToggleButton already flips its own getToggleState() before onClick fires (same
+    // pattern bypassToggle/fxLoopBypassToggle already rely on) - read the NEW state and send it.
+    tunerToggle.onClick = [this] { controller.setTunerOn (tunerToggle.getToggleState()); };
 
-    // Momentary - one click, one tap. Nothing to read back or sync.
-    tapTempoButton.onClick = [this] { controller.sendMidiCc (kTapTempoCc, 127); };
+    // Momentary - one tap (mousedown, see TapTempoButton.h), one send. Nothing to read back or
+    // sync - onTap only fires the CC; the button owns its own LED flash independently.
+    tapTempoButton.onTap = [this] { controller.sendMidiCc (kTapTempoCc, 127); };
 
     fxLoopBypassToggle.onClick = [this]
     {
@@ -677,11 +678,14 @@ void SignalChainComponent::applyGlobalsToggleStyle (ToggleStyle style)
 {
     // A switch (not if/else) so adding a new enumerator without a matching case here warns at
     // compile time instead of silently doing nothing - see ToggleStyle.h.
-    switch (style)
+    for (auto* toggle : { &tunerToggle, &fxLoopBypassToggle })
     {
-        case ToggleStyle::rockerSwitch:
-            fxLoopBypassToggle.setLookAndFeel (&rockerSwitchLookAndFeel);
-            break;
+        switch (style)
+        {
+            case ToggleStyle::rockerSwitch:
+                toggle->setLookAndFeel (&rockerSwitchLookAndFeel);
+                break;
+        }
     }
 }
 
@@ -780,14 +784,22 @@ void SignalChainComponent::resized()
 
     auto tunerCol = globalsRow.removeFromLeft (tunerColWidth);
     tunerLabel.setBounds (tunerCol.getX(), gy, tunerCol.getWidth(), 18);
-    tunerOnButton.setBounds (tunerCol.getX(), gy + 22, 80, 26);
-    tunerOffButton.setBounds (tunerCol.getX() + 86, gy + 22, 80, 26);
-    tunerStatusLabel.setBounds (tunerCol.getX(), gy + 52, tunerCol.getWidth(), 32);
+    tunerToggle.setBounds (tunerCol.getX(), gy + 22, 52, 46);
+    tunerStatusLabel.setBounds (tunerCol.getX(), gy + 72, tunerCol.getWidth(), 32);
     globalsRow.removeFromLeft (colGap);
 
     auto tapCol = globalsRow.removeFromLeft (tapColWidth);
     tapTempoLabel.setBounds (tapCol.getX(), gy, tapCol.getWidth(), 18);
-    tapTempoButton.setBounds (tapCol.getX(), gy + 22, 70, 26);
+    // Circular, so width == height - centred within the column rather than left-aligned like
+    // every other control here, since an off-centre circle reads oddly next to a straight-edged
+    // column boundary in a way an off-centre rectangle doesn't.
+    // 42px - matches the gold knob's own visible metal-face circle, not the full ~90px slider
+    // bounds that also include its surrounding dot ring (GoldKnobLookAndFeel's kFaceRadiusRatio:
+    // 42/180 * 90 diameter = 42) - per the user's explicit call, sized to the knob itself, not the
+    // knob-plus-dots bounding box.
+    constexpr int tapButtonDiameter = 42;
+    tapTempoButton.setBounds (tapCol.getX() + (tapCol.getWidth() - tapButtonDiameter) / 2, gy + 22,
+                               tapButtonDiameter, tapButtonDiameter);
     globalsRow.removeFromLeft (colGap);
 
     auto fxCol = globalsRow.removeFromLeft (fxColWidth);
@@ -1482,6 +1494,10 @@ void SignalChainComponent::onMainVolumeReceived (int volume)
 
 void SignalChainComponent::onTunerStateReceived (bool isOn)
 {
-    tunerStatusLabel.setText (juce::String ("Tuner state (device-confirmed): ") + (isOn ? "On" : "Off"),
+    // dontSendNotification - this is us reflecting a device-confirmed value, not a user click, so
+    // it must not re-trigger onClick (which would just send the same command right back) - same
+    // reasoning as onMainVolumeReceived() above.
+    tunerToggle.setToggleState (isOn, juce::dontSendNotification);
+    tunerStatusLabel.setText (juce::String ("Device-confirmed: ") + (isOn ? "On" : "Off"),
                                juce::dontSendNotification);
 }

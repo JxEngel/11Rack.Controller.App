@@ -4,6 +4,7 @@
 #include "GoldKnobLookAndFeel.h"
 #include "KnobStyle.h"
 #include "RockerSwitchLookAndFeel.h"
+#include "TapTempoButton.h"
 #include "ToggleStyle.h"
 #include "Rack/RackController.h"
 #include "Rack/BulkRigParser.h"
@@ -308,13 +309,17 @@ private:
     juce::Label volumeLabel { {}, "Main Volume" };
     juce::Slider volumeSlider;
 
+    // A single rocker switch (2026-08-03, replacing separate Tuner On/Tuner Off buttons) - see
+    // applyGlobalsToggleStyle(). There's still no query in the protocol, only async
+    // device-confirmed notifications (onTunerStateReceived), so the switch's own state is
+    // necessarily optimistic (whatever was last clicked or confirmed) - tunerStatusLabel keeps
+    // that caveat visible rather than letting the switch imply more certainty than it has.
     juce::Label tunerLabel { {}, "Tuner" };
-    juce::TextButton tunerOnButton  { "Tuner On" };
-    juce::TextButton tunerOffButton { "Tuner Off" };
+    juce::ToggleButton tunerToggle;
     juce::Label tunerStatusLabel;
 
     juce::Label tapTempoLabel { {}, "Tap Tempo" };
-    juce::TextButton tapTempoButton { "Tap" };
+    TapTempoButton tapTempoButton;
 
     juce::Label fxLoopLabel { {}, "FX Loop" };
     juce::ToggleButton fxLoopBypassToggle { "Bypass" };
