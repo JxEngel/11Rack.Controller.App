@@ -502,6 +502,17 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
     addAndMakeVisible (fxLoopReturnSlider);
     addAndMakeVisible (fxLoopMixLabel);
     addAndMakeVisible (fxLoopMixSlider);
+
+    // Centred directly above their knob, matching SlotParamsPanel's per-effect knob grid (see its
+    // own doc comment) - not left-aligned group headers like tunerLabel/tapTempoLabel/fxLoopLabel
+    // above, which don't sit over one specific knob. Same smaller font too, for visual consistency
+    // across every knob in the app.
+    for (auto* knobLabel : { &volumeLabel, &fxLoopSendLabel, &fxLoopReturnLabel, &fxLoopMixLabel })
+    {
+        knobLabel->setJustificationType (juce::Justification::centred);
+        knobLabel->setFont (juce::Font (juce::FontOptions (11.0f)));
+    }
+
     addAndMakeVisible (chainLabel);
     addAndMakeVisible (chainViewport);
     addAndMakeVisible (paramsPanel);

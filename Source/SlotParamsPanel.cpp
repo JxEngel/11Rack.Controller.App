@@ -48,34 +48,58 @@ void SlotParamsPanel::resized()
 
     area.removeFromTop (12);
 
-    // paramsViewport gets whatever's left; paramsContent is sized to fit its actual row count
-    // (bypass + one row per param) so it scrolls instead of clipping/overlapping when an effect
-    // has more rows than the visible area holds (e.g. Para EQ's 14 real params).
+    // paramsViewport gets whatever's left; paramsContent is sized to fit its actual content height
+    // (bypass row + the knob grid + one row per remaining toggle/selector param) so it scrolls
+    // instead of clipping/overlapping when an effect has more controls than the visible area holds
+    // (e.g. Para EQ's 14 real params).
     paramsViewport.setBounds (area);
 
-    // Rotary sliders (the gold knob look, see goldKnobLookAndFeel's doc comment) and rocker
-    // switches (see rockerSwitchLookAndFeel's doc comment) both need more room than the flat
-    // linear sliders/plain comboboxes every other row uses - 90/46px were picked by eye to fit a
-    // rotary dial or a legible switch (with its ON/OFF labels) comfortably, not derived from
-    // anything.
+    // Rocker switches (see rockerSwitchLookAndFeel's doc comment) need more room than the flat
+    // linear sliders/plain comboboxes every toggle/selector row uses - 46px was picked by eye to
+    // fit a legible switch (with its ON/OFF labels) comfortably, not derived from anything.
     constexpr int spacing = 6;
     constexpr int flatRowHeight = 30;
-    constexpr int rotaryRowHeight = 90;
     constexpr int toggleRowHeight = 46;
-    auto rowHeightFor = [flatRowHeight, rotaryRowHeight, toggleRowHeight] (const ParamControl& pc)
-    {
-        if (pc.slider != nullptr && pc.slider->isRotary())
-            return rotaryRowHeight;
-        if (pc.toggle != nullptr)
-            return toggleRowHeight;
-        return flatRowHeight;
-    };
 
-    int contentHeight = bypassToggle != nullptr ? (toggleRowHeight + spacing) : 0;
-    for (auto& pc : paramControls)
-        contentHeight += rowHeightFor (pc) + spacing;
+    // Knob-kind controls are laid out as their own horizontal, wrapping grid - label ABOVE each
+    // knob, not to the left like every other control kind - rather than one-per-row (see the
+    // conversation this was redesigned from: "review all the effects... label above it... placed
+    // in a horizontal row"). Cell size matches the knob's own established rotary proportions (a
+    // 90px-tall juce::Slider, see applyKnobStyle()) plus a label tall enough to wrap a two-word
+    // param name (e.g. an amp model's "Instrument Volume") onto 2 lines rather than truncating.
+    constexpr int knobCellWidth = 96;
+    constexpr int knobLabelHeight = 28;
+    constexpr int knobLabelGap = 2;
+    constexpr int knobSliderHeight = 90;
+    constexpr int knobCellHeight = knobLabelHeight + knobLabelGap + knobSliderHeight;
+    constexpr int knobGapX = 12;
+    constexpr int knobGapY = 10;
 
     int contentWidth = paramsViewport.getWidth() - paramsViewport.getScrollBarThickness();
+
+    // Split into the knob grid vs. everything else - this is purely a VISUAL regrouping for
+    // layout; it doesn't touch settingIndex/ccNumber assignment (done once, in original param
+    // order, back in rebuildForSelectedEffect()), so it can't affect which CC a control sends.
+    std::vector<ParamControl*> knobControls, otherControls;
+    for (auto& pc : paramControls)
+        (pc.slider != nullptr ? knobControls : otherControls).push_back (&pc);
+
+    int knobsPerRow = juce::jmax (1, (contentWidth + knobGapX) / (knobCellWidth + knobGapX));
+    int knobRowCount = knobControls.empty()
+                           ? 0
+                           : (int) ((knobControls.size() + (size_t) knobsPerRow - 1) / (size_t) knobsPerRow);
+    int knobGridHeight = knobRowCount * knobCellHeight + juce::jmax (0, knobRowCount - 1) * knobGapY;
+
+    auto otherRowHeight = [toggleRowHeight, flatRowHeight] (const ParamControl& pc)
+    {
+        return pc.toggle != nullptr ? toggleRowHeight : flatRowHeight;
+    };
+
+    int contentHeight = (bypassToggle != nullptr ? (toggleRowHeight + spacing) : 0)
+                        + (knobGridHeight > 0 ? (knobGridHeight + spacing) : 0);
+    for (auto* pc : otherControls)
+        contentHeight += otherRowHeight (*pc) + spacing;
+
     paramsContent.setSize (juce::jmax (contentWidth, 0), contentHeight);
 
     auto contentArea = paramsContent.getLocalBounds();
@@ -87,17 +111,41 @@ void SlotParamsPanel::resized()
         contentArea.removeFromTop (spacing);
     }
 
-    for (auto& pc : paramControls)
+    if (! knobControls.empty())
     {
-        auto row = contentArea.removeFromTop (rowHeightFor (pc));
-        pc.label->setBounds (row.removeFromLeft (150).reduced (2));
+        auto gridArea = contentArea.removeFromTop (knobGridHeight);
+        int x = gridArea.getX();
+        int y = gridArea.getY();
+        int col = 0;
 
-        if (pc.slider != nullptr)
-            pc.slider->setBounds (row.reduced (2));
-        else if (pc.toggle != nullptr)
-            pc.toggle->setBounds (row.reduced (2));
-        else if (pc.combo != nullptr)
-            pc.combo->setBounds (row.reduced (2));
+        for (auto* pc : knobControls)
+        {
+            if (col == knobsPerRow)
+            {
+                col = 0;
+                x = gridArea.getX();
+                y += knobCellHeight + knobGapY;
+            }
+
+            pc->label->setBounds (x, y, knobCellWidth, knobLabelHeight);
+            pc->slider->setBounds (x, y + knobLabelHeight + knobLabelGap, knobCellWidth, knobSliderHeight);
+
+            x += knobCellWidth + knobGapX;
+            ++col;
+        }
+
+        contentArea.removeFromTop (spacing);
+    }
+
+    for (auto* pc : otherControls)
+    {
+        auto row = contentArea.removeFromTop (otherRowHeight (*pc));
+        pc->label->setBounds (row.removeFromLeft (150).reduced (2));
+
+        if (pc->toggle != nullptr)
+            pc->toggle->setBounds (row.reduced (2));
+        else if (pc->combo != nullptr)
+            pc->combo->setBounds (row.reduced (2));
 
         contentArea.removeFromTop (spacing);
     }
@@ -279,6 +327,13 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
 
         if (param.kind == ParamKind::knob)
         {
+            // Centred above the knob, not left-aligned like every other control's label - matches
+            // the horizontal knob grid in resized(). Smaller font + 2 lines (see knobLabelHeight
+            // there) so longer two-word param names (e.g. an amp model's "Instrument Volume")
+            // still fit instead of truncating.
+            pc.label->setJustificationType (juce::Justification::centred);
+            pc.label->setFont (juce::Font (juce::FontOptions (11.0f)));
+
             pc.slider = std::make_unique<juce::Slider>();
             paramsContent.addAndMakeVisible (*pc.slider);
 

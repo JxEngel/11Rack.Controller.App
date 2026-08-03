@@ -207,7 +207,11 @@
      functional (drag/click/keyboard) but visually invisible, overlaid on the custom-drawn face -
      see initGoldKnobs() below for how the two stay in sync. */
   .knob-block { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .knob-block .klabel { font-size: 11px; color: var(--text-secondary); }
+  .knob-block .klabel { font-size: 11px; color: var(--text-secondary); text-align: center; }
+  /* Per-slot editor's knob-kind controls (see renderEditor()) - a horizontal grid wrapping to a
+     new row as needed, matching SlotParamsPanel::resized()'s own knob grid (label above each
+     knob, not one-per-row with the label to the left like every other control kind). */
+  .knob-grid { display: flex; flex-wrap: wrap; gap: 18px 20px; margin: 4px 0 16px; }
   .gold-knob { position: relative; width: 84px; height: 84px; }
   .gold-knob .knob-dot {
     position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px;
@@ -291,8 +295,8 @@
   <p class="globals-label">Rig globals</p>
   <div class="globals-panel">
     <div class="global-group">
-      <span class="glabel">Main Volume</span>
       <div class="knob-block">
+        <span class="klabel">Main Volume</span>
         <div class="gold-knob" data-decimals="1">
           <div class="knob-dots"></div>
           <div class="knob-face"></div>
@@ -780,18 +784,32 @@ function renderEditor() {
   html += '<p class="note">' + slot.note + '</p>';
   html += '<div class="bypass-row">' + rockerSwitchHtml(' id="bypassCheck"') + '<label>Bypass</label></div>';
 
-  controls.forEach(c => {
-    html += '<div class="row"><span class="rlabel">' + c.l + '</span>';
-    if (c.t === 'knob') {
+  // Knob-kind controls are pulled out into their own horizontal, wrapping grid (label ABOVE each
+  // knob, via .knob-block/.klabel - the same markup Rig Globals' knobs above use) rather than
+  // rendered one-per-row with the label to the left, matching SlotParamsPanel::resized()'s own
+  // split into a knob grid vs. everything else. Toggle/selector-kind controls keep the existing
+  // .row layout (label left) below the grid.
+  const knobControls = controls.filter(c => c.t === 'knob');
+  const otherControls = controls.filter(c => c.t !== 'knob');
+
+  if (knobControls.length > 0) {
+    html += '<div class="knob-grid">';
+    knobControls.forEach(c => {
       // Same 0-127 CC-scale range every knob uses in the real app (SlotParamsPanel), regardless
       // of what the label itself describes (e.g. Graphic EQ's "-12 to +12" bands) - see
       // initGoldKnobs() for the gold-metallic rendering shared with the Rig Globals knobs above.
-      html += '<div class="knob-block">' +
+      html += '<div class="knob-block"><span class="klabel">' + c.l + '</span>' +
         '<div class="gold-knob"><div class="knob-dots"></div><div class="knob-face"></div>' +
         '<div class="knob-pointer"></div><input type="range" class="knob-range" min="0" max="127" step="1" value="64" /></div>' +
         '<input class="valbox knob-valbox" value="64" readonly />' +
         '</div>';
-    } else if (c.t === 'select') {
+    });
+    html += '</div>';
+  }
+
+  otherControls.forEach(c => {
+    html += '<div class="row"><span class="rlabel">' + c.l + '</span>';
+    if (c.t === 'select') {
       html += '<select>' + c.options.map(o => '<option>' + o + '</option>').join('') + '</select>';
     } else if (c.t === 'toggle') {
       // Generic ON/OFF, not c.on/c.off's semantic names - matches the real app exactly: the row's
