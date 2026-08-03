@@ -27,6 +27,12 @@ MainComponent::MainComponent()
     // Owned as members, not heap-allocated - don't let TabbedComponent delete them.
     tabs.addTab ("Diagnostics", juce::Colours::transparentBlack, &diagnosticsComponent, false);
     tabs.addTab ("Signal Chain", juce::Colours::transparentBlack, &signalChainComponent, false);
+    tabs.addTab ("Display Options", juce::Colours::transparentBlack, &displayOptionsComponent, false);
+
+    displayOptionsComponent.onKnobStyleChanged = [this] (KnobStyle style)
+    {
+        signalChainComponent.setKnobStyle (style);
+    };
 
     connectToRack();
 

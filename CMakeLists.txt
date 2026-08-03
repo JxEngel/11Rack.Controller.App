@@ -34,8 +34,10 @@ target_sources(ElevenRackController PRIVATE
     Source/Main.cpp
     Source/MainComponent.cpp
     Source/DiagnosticsComponent.cpp
+    Source/DisplayOptionsComponent.cpp
     Source/SlotConfig.cpp
     Source/SlotParamsPanel.cpp
+    Source/GoldKnobLookAndFeel.cpp
     Source/SignalChainComponent.cpp
     Source/Rack/SysExFrame.cpp
     Source/Rack/SevenBitCodec.cpp

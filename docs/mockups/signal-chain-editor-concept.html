@@ -197,14 +197,36 @@
   .global-group { display: flex; flex-direction: column; gap: 6px; }
   .global-group .glabel { font-size: 12px; color: var(--text-secondary); }
   .global-group .gcontrol-row { display: flex; align-items: center; gap: 8px; }
-  .global-group .gcontrol-row input[type=range] { width: 130px; }
   .global-group .gcontrol-row label { font-size: 13px; }
   .tuner-status { font-size: 11px; color: var(--text-muted); max-width: 190px; line-height: 1.3; }
-  .fxloop-knobs { display: flex; gap: 14px; }
-  .knob-mini { display: flex; flex-direction: column; gap: 4px; width: 74px; }
-  .knob-mini .klabel { font-size: 11px; color: var(--text-secondary); }
-  .knob-mini input[type=range] { width: 74px; }
-  .knob-mini .valbox { width: 40px; padding: 2px 4px; font-size: 12px; }
+  .fxloop-knobs { display: flex; gap: 18px; }
+
+  /* Gold metallic rotary knob (matches Source/GoldKnobLookAndFeel.cpp's hand-drawn LookAndFeel -
+     dark bezel, warm gold radial-gradient face, a ring of LED-style dots that light up
+     progressively as the value rises, a pointer line showing rotation) - reviewed as an
+     interactive mockup before GoldKnobLookAndFeel was written, see
+     signal-chain-editor-concept-notes.md. The underlying <input type=range> stays fully
+     functional (drag/click/keyboard) but visually invisible, overlaid on the custom-drawn face -
+     see initGoldKnobs() below for how the two stay in sync. */
+  .knob-block { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .knob-block .klabel { font-size: 11px; color: var(--text-secondary); }
+  .gold-knob { position: relative; width: 84px; height: 84px; }
+  .gold-knob .knob-dot {
+    position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+    border-radius: 50%; background: #4a4f54;
+  }
+  .gold-knob .knob-dot.lit { background: #f2c14e; }
+  .gold-knob .knob-face {
+    position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px;
+    border-radius: 50%; border: 5px solid #15181b; box-sizing: border-box;
+    background: radial-gradient(circle at 35% 30%, #f6dfa0 0%, #d9a83f 45%, #7a5a1c 100%);
+  }
+  .gold-knob .knob-pointer {
+    position: absolute; left: 50%; top: 50%; width: 3px; height: 20px; margin: -1.5px 0 0 -1.5px;
+    background: #fdf6e3; border-radius: 2px; transform-origin: 50% 0%;
+  }
+  .gold-knob .knob-range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ns-resize; }
+  .knob-valbox { width: 46px; text-align: center; }
 </style>
 </head>
 <body>
@@ -247,10 +269,14 @@
   <div class="globals-panel">
     <div class="global-group">
       <span class="glabel">Main Volume</span>
-      <div class="gcontrol-row">
-        <input type="range" min="0" max="10" step="0.1" value="5.0"
-               oninput="this.nextElementSibling.value=parseFloat(this.value).toFixed(1)" />
-        <input class="valbox" value="5.0" readonly />
+      <div class="knob-block">
+        <div class="gold-knob" data-decimals="1">
+          <div class="knob-dots"></div>
+          <div class="knob-face"></div>
+          <div class="knob-pointer"></div>
+          <input type="range" class="knob-range" min="0" max="10" step="0.1" value="5.0" />
+        </div>
+        <input class="valbox knob-valbox" value="5.0" readonly />
       </div>
     </div>
 
@@ -277,20 +303,35 @@
         <label for="fxLoopBypass">Bypass</label>
       </div>
       <div class="fxloop-knobs">
-        <div class="knob-mini">
+        <div class="knob-block">
           <span class="klabel">Send</span>
-          <input type="range" min="0" max="127" value="64" oninput="this.nextElementSibling.value=this.value" />
-          <input class="valbox" value="64" readonly />
+          <div class="gold-knob">
+            <div class="knob-dots"></div>
+            <div class="knob-face"></div>
+            <div class="knob-pointer"></div>
+            <input type="range" class="knob-range" min="0" max="127" step="1" value="64" />
+          </div>
+          <input class="valbox knob-valbox" value="64" readonly />
         </div>
-        <div class="knob-mini">
+        <div class="knob-block">
           <span class="klabel">Return</span>
-          <input type="range" min="0" max="127" value="64" oninput="this.nextElementSibling.value=this.value" />
-          <input class="valbox" value="64" readonly />
+          <div class="gold-knob">
+            <div class="knob-dots"></div>
+            <div class="knob-face"></div>
+            <div class="knob-pointer"></div>
+            <input type="range" class="knob-range" min="0" max="127" step="1" value="64" />
+          </div>
+          <input class="valbox knob-valbox" value="64" readonly />
         </div>
-        <div class="knob-mini">
+        <div class="knob-block">
           <span class="klabel">Mix</span>
-          <input type="range" min="0" max="127" value="64" oninput="this.nextElementSibling.value=this.value" />
-          <input class="valbox" value="64" readonly />
+          <div class="gold-knob">
+            <div class="knob-dots"></div>
+            <div class="knob-face"></div>
+            <div class="knob-pointer"></div>
+            <input type="range" class="knob-range" min="0" max="127" step="1" value="64" />
+          </div>
+          <input class="valbox knob-valbox" value="64" readonly />
         </div>
       </div>
     </div>
@@ -688,9 +729,14 @@ function renderEditor() {
   controls.forEach(c => {
     html += '<div class="row"><span class="rlabel">' + c.l + '</span>';
     if (c.t === 'knob') {
-      const v = 64;
-      html += '<input type="range" min="0" max="127" value="' + v + '" oninput="this.nextElementSibling.value=this.value" />' +
-        '<input class="valbox" value="' + v + '" readonly />';
+      // Same 0-127 CC-scale range every knob uses in the real app (SlotParamsPanel), regardless
+      // of what the label itself describes (e.g. Graphic EQ's "-12 to +12" bands) - see
+      // initGoldKnobs() for the gold-metallic rendering shared with the Rig Globals knobs above.
+      html += '<div class="knob-block">' +
+        '<div class="gold-knob"><div class="knob-dots"></div><div class="knob-face"></div>' +
+        '<div class="knob-pointer"></div><input type="range" class="knob-range" min="0" max="127" step="1" value="64" /></div>' +
+        '<input class="valbox knob-valbox" value="64" readonly />' +
+        '</div>';
     } else if (c.t === 'select') {
       html += '<select>' + c.options.map(o => '<option>' + o + '</option>').join('') + '</select>';
     } else if (c.t === 'toggle') {
@@ -701,6 +747,7 @@ function renderEditor() {
 
   el.innerHTML = html;
   document.getElementById('effectSelect').onchange = e => { /* mockup only - not wired */ };
+  initGoldKnobs(el);
 }
 
 function renderAll() {
@@ -724,9 +771,55 @@ document.getElementById('tapTempoBtn').onclick = () => {
   document.getElementById('statusText').textContent = 'Tap Tempo sent.';
 };
 
+// Gold metallic knob (see the ".gold-knob" CSS above) - drives the custom-drawn pointer/dot-ring
+// from the real, still-fully-functional <input type=range> underneath (kept invisible but on top,
+// so drag/click/keyboard all still work exactly as a plain range input would) rather than
+// reimplementing dragging by hand. Matches Source/GoldKnobLookAndFeel.cpp's own sweep (13 dots
+// across -135deg to +135deg) and its progressive dot-lighting behaviour. Used both for the Rig
+// Globals knobs (initialized once, below) and every per-slot editor knob (initialized scoped to
+// just #editorArea each time renderEditor() rebuilds it - see there) - `root` lets a second call
+// re-scan only the freshly-rebuilt editor markup instead of re-initializing (and so
+// double-appending dots onto) the Rig Globals knobs every time you pick a different effect.
+function initGoldKnobs(root = document) {
+  const startAngle = -135, endAngle = 135, numDots = 13, dotRingRadius = 38, knobCentre = 42;
+
+  root.querySelectorAll('.gold-knob').forEach(knob => {
+    const dotsHost = knob.querySelector('.knob-dots');
+    const pointer = knob.querySelector('.knob-pointer');
+    const range = knob.querySelector('.knob-range');
+    const valbox = knob.parentElement.querySelector('.knob-valbox');
+    const decimals = parseInt(knob.dataset.decimals || '0', 10);
+
+    for (let i = 0; i < numDots; i++) {
+      const rad = (startAngle + (i / (numDots - 1)) * (endAngle - startAngle)) * Math.PI / 180;
+      const dot = document.createElement('div');
+      dot.className = 'knob-dot';
+      dot.style.left = (knobCentre + dotRingRadius * Math.sin(rad)) + 'px';
+      dot.style.top = (knobCentre - dotRingRadius * Math.cos(rad)) + 'px';
+      dotsHost.appendChild(dot);
+    }
+    const dots = dotsHost.children;
+
+    function render() {
+      const min = parseFloat(range.min), max = parseFloat(range.max), val = parseFloat(range.value);
+      const t = (val - min) / (max - min);
+      pointer.style.transform = 'rotate(' + (startAngle + t * (endAngle - startAngle)) + 'deg)';
+      const lit = Math.round(t * (numDots - 1));
+      for (let i = 0; i < dots.length; i++) dots[i].classList.toggle('lit', i <= lit);
+      if (valbox) valbox.value = val.toFixed(decimals);
+    }
+    range.addEventListener('input', render);
+    render();
+  });
+}
+
 renderPresetSelect();
 document.getElementById('statusText').textContent = 'Click Refresh Rig List to fetch real rig names.';
 renderAll();
+// Scoped to just the Rig Globals panel - renderEditor() (called by renderAll() above) already
+// scoped its own initGoldKnobs(el) call to #editorArea, so initializing the whole document here
+// too would double-append dots onto those same editor knobs.
+initGoldKnobs(document.querySelector('.globals-panel'));
 </script>
 </body>
 </html>

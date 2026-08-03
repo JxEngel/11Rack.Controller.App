@@ -15,6 +15,15 @@ SlotParamsPanel::SlotParamsPanel (Rack::RackController& controllerToUse)
     noteLabel.setJustificationType (juce::Justification::topLeft);
 }
 
+void SlotParamsPanel::setKnobStyle (KnobStyle style)
+{
+    if (style == currentKnobStyle)
+        return;
+
+    currentKnobStyle = style;
+    rebuildPreservingCurrentValues();
+}
+
 SlotParamsPanel::~SlotParamsPanel() = default;
 
 void SlotParamsPanel::resized()
@@ -35,23 +44,36 @@ void SlotParamsPanel::resized()
     // has more rows than the visible area holds (e.g. Para EQ's 14 real params).
     paramsViewport.setBounds (area);
 
-    constexpr int rowHeight = 36; // 30 row + 6 spacing, matching the row layout below
-    int rowCount = (bypassToggle != nullptr ? 1 : 0) + (int) paramControls.size();
+    // Rotary sliders (the gold knob look, see goldKnobLookAndFeel's doc comment) need a much
+    // taller row than the flat linear sliders every other row uses - 90px was picked by eye to fit
+    // a rotary dial plus its below-knob text box comfortably, not derived from anything.
+    constexpr int spacing = 6;
+    constexpr int flatRowHeight = 30;
+    constexpr int rotaryRowHeight = 90;
+    auto rowHeightFor = [flatRowHeight, rotaryRowHeight] (const ParamControl& pc)
+    {
+        return (pc.slider != nullptr && pc.slider->isRotary()) ? rotaryRowHeight : flatRowHeight;
+    };
+
+    int contentHeight = bypassToggle != nullptr ? (flatRowHeight + spacing) : 0;
+    for (auto& pc : paramControls)
+        contentHeight += rowHeightFor (pc) + spacing;
+
     int contentWidth = paramsViewport.getWidth() - paramsViewport.getScrollBarThickness();
-    paramsContent.setSize (juce::jmax (contentWidth, 0), rowCount * rowHeight);
+    paramsContent.setSize (juce::jmax (contentWidth, 0), contentHeight);
 
     auto contentArea = paramsContent.getLocalBounds();
 
     if (bypassToggle != nullptr)
     {
-        auto row = contentArea.removeFromTop (30);
+        auto row = contentArea.removeFromTop (flatRowHeight);
         bypassToggle->setBounds (row.reduced (2));
-        contentArea.removeFromTop (6);
+        contentArea.removeFromTop (spacing);
     }
 
     for (auto& pc : paramControls)
     {
-        auto row = contentArea.removeFromTop (30);
+        auto row = contentArea.removeFromTop (rowHeightFor (pc));
         pc.label->setBounds (row.removeFromLeft (150).reduced (2));
 
         if (pc.slider != nullptr)
@@ -61,7 +83,7 @@ void SlotParamsPanel::resized()
         else if (pc.combo != nullptr)
             pc.combo->setBounds (row.reduced (2));
 
-        contentArea.removeFromTop (6);
+        contentArea.removeFromTop (spacing);
     }
 }
 
@@ -135,6 +157,40 @@ void SlotParamsPanel::rebuildEffectList()
     effectSelector.setSelectedId (currentSlot->defaultEffectId, juce::dontSendNotification);
 }
 
+void SlotParamsPanel::rebuildPreservingCurrentValues()
+{
+    std::optional<bool> bypass;
+    if (bypassToggle != nullptr)
+        bypass = bypassToggle->getToggleState();
+
+    std::map<juce::String, bool> toggleStates;
+    std::map<juce::String, int> knobValues;
+    for (auto& pc : paramControls)
+    {
+        if (pc.kind == ParamKind::toggle && pc.toggle != nullptr)
+            toggleStates[pc.paramKey] = pc.toggle->getToggleState();
+        else if (pc.kind == ParamKind::knob && pc.slider != nullptr)
+            knobValues[pc.paramKey] = (int) pc.slider->getValue();
+    }
+
+    rebuildForSelectedEffect (bypass, toggleStates, knobValues);
+}
+
+void SlotParamsPanel::applyKnobStyle (juce::Slider& slider)
+{
+    // Every knob-kind control always renders as an actual knob - see KnobStyle.h for why there's
+    // no "flat"/plain-slider fallback. A switch (not if/else) so adding a new enumerator without a
+    // matching case here warns at compile time instead of silently doing nothing.
+    switch (currentKnobStyle)
+    {
+        case KnobStyle::goldMetallic:
+            slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 18);
+            slider.setLookAndFeel (&goldKnobLookAndFeel);
+            break;
+    }
+}
+
 void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
                                                  const std::map<juce::String, bool>& knownToggleStates,
                                                  const std::map<juce::String, int>& knownKnobValues)
@@ -185,6 +241,7 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
 
         ParamControl pc;
         pc.kind = param.kind;
+        pc.paramKey = juce::String (param.key);
         pc.ccNumber = cc;
         pc.label = std::make_unique<juce::Label> (juce::String(),
                                                     hasLiveCc ? param.label : (param.label + " (not synced)"));
@@ -206,8 +263,7 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
             else
                 pc.slider->setValue ((param.minValue + param.maxValue) / 2.0, juce::dontSendNotification);
 
-            pc.slider->setSliderStyle (juce::Slider::LinearHorizontal);
-            pc.slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 50, 24);
+            applyKnobStyle (*pc.slider);
 
             // Local-only (no live CC): the slider just holds whatever you drag it to - no
             // onValueChange handler, so nothing gets sent anywhere.

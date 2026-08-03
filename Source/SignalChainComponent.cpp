@@ -37,8 +37,8 @@ namespace
     {
         slider.setRange (0, 127, 1);
         slider.setValue (64, juce::dontSendNotification);
-        slider.setSliderStyle (juce::Slider::LinearHorizontal);
-        slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 46, 22);
+        // Style/LookAndFeel applied separately via SignalChainComponent::applyGlobalsKnobStyle() -
+        // this only sets up the range/value every knob style shares.
     }
 
     // Best-guess order shown before any real Bulk Rig decode - NOT confirmed against any real rig
@@ -523,11 +523,10 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
 
     // Rig globals - ported directly from the now-removed RigGlobalsComponent, see the class doc
     // comment. Shows the unit's own 0.0-10.0 display scale, not the raw wire value - see
-    // displayToRaw().
+    // displayToRaw(). Style/LookAndFeel applied below via applyGlobalsKnobStyle(), same as the
+    // other 3 globals knobs.
     volumeSlider.setRange (0.0, 10.0, 0.1);
     volumeSlider.setValue (kDisplayCenter, juce::dontSendNotification);
-    volumeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-    volumeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
 
     // Live two-way sync: dragging sends on every change. Receiving a device-confirmed value
     // (onMainVolumeReceived, below) moves the slider with dontSendNotification so it doesn't loop
@@ -569,6 +568,8 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
     {
         controller.sendMidiCc (kFxLoopMixCc, static_cast<uint8_t> (static_cast<int> (fxLoopMixSlider.getValue())));
     };
+
+    applyGlobalsKnobStyle (KnobStyle::goldMetallic);
 
     rigEntries.resize ((size_t) (RackController::kNumBanks * RackController::kRigsPerBank));
     rigStatusLabel.setText ("Click Refresh Rig List to fetch real rig names.", juce::dontSendNotification);
@@ -629,6 +630,29 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
 SignalChainComponent::~SignalChainComponent()
 {
     controller.removeListener (this);
+}
+
+void SignalChainComponent::setKnobStyle (KnobStyle style)
+{
+    paramsPanel.setKnobStyle (style);
+    applyGlobalsKnobStyle (style);
+}
+
+void SignalChainComponent::applyGlobalsKnobStyle (KnobStyle style)
+{
+    // A switch (not if/else) so adding a new enumerator without a matching case here warns at
+    // compile time instead of silently doing nothing - see KnobStyle.h.
+    for (auto* slider : { &volumeSlider, &fxLoopSendSlider, &fxLoopReturnSlider, &fxLoopMixSlider })
+    {
+        switch (style)
+        {
+            case KnobStyle::goldMetallic:
+                slider->setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+                slider->setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 18);
+                slider->setLookAndFeel (&goldKnobLookAndFeel);
+                break;
+        }
+    }
 }
 
 std::vector<SignalChainComponent::ChainBlock> SignalChainComponent::buildDefaultChain()
@@ -696,12 +720,14 @@ void SignalChainComponent::resized()
     // "Rig globals" row - four groups side by side (Main Volume/Tuner/Tap Tempo/FX Loop), matching
     // docs/mockups/signal-chain-editor-concept.html's ".globals-panel" horizontal layout, inside its
     // own bordered/filled panel (same treatment as the chain panel below - see paint()). Tuner/Tap
-    // Tempo stay fixed-width (buttons don't benefit from extra width); Main Volume's slider and FX
-    // Loop's 3 mini knobs are sliders, so they DO stretch to use whatever width is left over on a
+    // Tempo stay fixed-width (buttons don't benefit from extra width); Main Volume's knob and FX
+    // Loop's 3 mini knobs sit in columns that DO stretch to use whatever width is left over on a
     // wide window instead of leaving it blank - unlike the chain's own blocks, which stay fixed-width
     // by deliberate earlier decision (see signal-chain-editor-concept-notes.md "Chain slots use a
-    // fixed width").
-    constexpr int globalsRowHeight = 92;
+    // fixed width"). Each knob's own rendered diameter is still capped by its row's fixed HEIGHT
+    // (GoldKnobLookAndFeel draws at min(width,height) - see its doc comment), so extra column width
+    // just centers the dial rather than distorting it.
+    constexpr int globalsRowHeight = 166; // tall enough for a rotary knob + its value box, not just a flat slider strip
     constexpr int globalsPanelPadding = 10; // matches kChainPanelPadding's role for the chain panel
     globalsPanelBounds = area.removeFromTop (globalsRowHeight + 2 * globalsPanelPadding);
     auto globalsRow = globalsPanelBounds.reduced (globalsPanelPadding);
@@ -719,7 +745,7 @@ void SignalChainComponent::resized()
 
     auto volumeCol = globalsRow.removeFromLeft (volumeColWidth);
     volumeLabel.setBounds (volumeCol.getX(), gy, volumeCol.getWidth(), 18);
-    volumeSlider.setBounds (volumeCol.getX(), gy + 22, volumeCol.getWidth(), 26);
+    volumeSlider.setBounds (volumeCol.getX(), gy + 22, volumeCol.getWidth(), 90);
     globalsRow.removeFromLeft (colGap);
 
     auto tunerCol = globalsRow.removeFromLeft (tunerColWidth);
@@ -751,7 +777,7 @@ void SignalChainComponent::resized()
     int knobsSliderY = knobsLabelY + 16;
     for (auto* knobSlider : { &fxLoopSendSlider, &fxLoopReturnSlider, &fxLoopMixSlider })
     {
-        knobSlider->setBounds (kx, knobsSliderY, knobWidth, 24);
+        knobSlider->setBounds (kx, knobsSliderY, knobWidth, 90);
         kx += knobWidth + knobGap;
     }
 

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "GoldKnobLookAndFeel.h"
+#include "KnobStyle.h"
 #include "Rack/RackController.h"
 #include "Rack/BulkRigParser.h"
 #include "SlotParamsPanel.h"
@@ -61,6 +63,12 @@ public:
 
     void paint (juce::Graphics& g) override;
     void resized() override;
+
+    // Forwarded from the "Display Options" tab (see DisplayOptionsComponent/MainComponent) - applied
+    // both to the embedded paramsPanel AND to this component's own "Rig globals" knobs (Main
+    // Volume, FX Loop Send/Return/Mix), so a style change is consistent across the whole app, not
+    // just the per-slot editor.
+    void setKnobStyle (KnobStyle style);
 
 private:
     // One entry in the chain, in order. `subLabel`/`decodedEffectId`/`decodedBypass` are filled in
@@ -189,6 +197,13 @@ private:
         bool known = false;
     };
 
+    // Applies `style` to the "Rig globals" row's 4 knob sliders (Main Volume, FX Loop Send/Return/
+    // Mix) - see setKnobStyle(). These are fixed members set up once in the constructor, unlike
+    // SlotParamsPanel's dynamically-rebuilt paramControls, so this is called directly rather than
+    // needing a "preserve current values" rebuild step - the sliders themselves never get
+    // destroyed/recreated, only re-styled.
+    void applyGlobalsKnobStyle (KnobStyle style);
+
     void refreshRigList();
     void presetSelected();
     void rebuildChainUi();
@@ -259,6 +274,14 @@ private:
 
     juce::Component::SafePointer<juce::Component> draggedBlockComponent;
     juce::String draggedBlockId; // set alongside draggedBlockComponent - used by updateChainHoverPreview()
+
+    // MUST be declared before any Component member whose slider might call setLookAndFeel() on it
+    // (i.e. before volumeSlider/fxLoopSendSlider/fxLoopReturnSlider/fxLoopMixSlider below) - C++
+    // constructs members in declaration order and destroys them in reverse, so this ordering
+    // guarantees goldKnobLookAndFeel outlives every juce::Slider that could still be pointing at
+    // it. Separate instance from SlotParamsPanel's own - two independent components, each safely
+    // owning the look-and-feel object their own sliders reference, same pattern as there.
+    GoldKnobLookAndFeel goldKnobLookAndFeel;
 
     juce::ComboBox presetSelector;
     juce::TextButton renameButton { juce::String (juce::CharPointer_UTF8 ("\xe2\x9c\x8e")) }; // pencil glyph

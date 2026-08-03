@@ -1,6 +1,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "GoldKnobLookAndFeel.h"
+#include "KnobStyle.h"
 #include "Rack/RackController.h"
 #include "Rack/EffectDefinitions.h"
 #include "SlotConfig.h"
@@ -41,6 +43,10 @@
 // shows these too, beyond `SlotConfig::settingCc`'s range, labelled "(not synced)" - the control is
 // still interactive (so it CAN feed a future "Save to Unit" write once one exists), but has no
 // `onValueChange`/`onClick` handler, so nothing is ever sent to the unit.
+//
+// Knob display style (2026-08-03, see KnobStyle.h) is set from outside via setKnobStyle() -
+// DisplayOptionsComponent's "Display Options" tab owns the actual picker UI; this panel just
+// applies whatever style it's told to every knob-kind control, current and future.
 class SlotParamsPanel : public juce::Component
 {
 public:
@@ -48,6 +54,10 @@ public:
     ~SlotParamsPanel() override;
 
     void resized() override;
+
+    // Applied to every knob-kind control, current and future - see rebuildPreservingCurrentValues()
+    // for why switching styles doesn't discard whatever values are already showing.
+    void setKnobStyle (KnobStyle style);
 
     // Shows `slot`'s effect-selector + bypass + param controls. If `preferredEffectId` is present
     // in `slot.effectIds`, it's pre-selected instead of `slot.defaultEffectId` - use this when a
@@ -73,17 +83,37 @@ private:
                                    const std::map<juce::String, bool>& knownToggleStates = {},
                                    const std::map<juce::String, int>& knownKnobValues = {});
 
+    // Re-shows the currently selected effect's controls exactly as rebuildForSelectedEffect()
+    // does, but first reads bypass/toggle/knob values back out of the ABOUT-TO-BE-DESTROYED
+    // paramControls/bypassToggle and feeds them back in as the "known" values - so a pure display
+    // change (currently only setKnobStyle()) never silently discards whatever you'd already set,
+    // the way just calling rebuildForSelectedEffect() with no arguments would (that resets
+    // everything to defaults, which is correct when the EFFECT itself changes, but wrong here).
+    void rebuildPreservingCurrentValues();
+
+    // Applies currentKnobStyle to one knob-kind control's slider - the single place a new style
+    // gets wired in, see the class doc comment.
+    void applyKnobStyle (juce::Slider& slider);
+
     // Holds exactly one of slider/toggle/combo, matching `kind` - a plain tagged union would be
     // more compact, but this is clearer for a handful of controls that all need addAndMakeVisible.
     struct ParamControl
     {
         Rack::EffectDefinitions::ParamKind kind = Rack::EffectDefinitions::ParamKind::knob;
+        juce::String paramKey; // EffectDefinitions::ParamDefinition::key - see rebuildPreservingCurrentValues()
         std::unique_ptr<juce::Label> label;
         std::unique_ptr<juce::Slider> slider;       // kind == knob
         std::unique_ptr<juce::ToggleButton> toggle; // kind == toggle
         std::unique_ptr<juce::ComboBox> combo;      // kind == selector
         uint8_t ccNumber = 0;
     };
+
+    // MUST be declared before any Component member whose slider might call setLookAndFeel() on it
+    // (i.e. before paramControls below) - C++ constructs members in declaration order and destroys
+    // them in reverse, so this ordering guarantees goldKnobLookAndFeel outlives every juce::Slider
+    // that could still be pointing at it, avoiding a dangling-pointer-on-teardown bug.
+    GoldKnobLookAndFeel goldKnobLookAndFeel;
+    KnobStyle currentKnobStyle = KnobStyle::goldMetallic;
 
     juce::Label effectChooserLabel { {}, "Effect" };
     juce::ComboBox effectSelector;
