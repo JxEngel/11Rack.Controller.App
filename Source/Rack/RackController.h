@@ -111,7 +111,7 @@ namespace Rack
         // SevenBitCodec.h for why (a real hardware mismatch caught a bug where this was originally
         // unsigned, silently making half the real range unreachable). Roughly [-127, 127], with 0
         // at the unit's own displayed "5.0" (center of its 0.0-10.0 scale) - see
-        // RigGlobalsComponent for the display-value conversion.
+        // SignalChainComponent::displayToRaw()/rawToDisplay() for the display-value conversion.
         void setMainVolume (int8_t volume);
         void setTunerOn (bool isOn); // Confirmed working against real hardware (2026-07-24).
 

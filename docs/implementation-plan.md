@@ -632,13 +632,79 @@ Nothing above is trusted until confirmed against the real unit:
       live-CC editor every other mapped slot uses, instead of the generic fallback. Bypass/Position
       are from the official manual chart, not yet hardware-tested. Build-verified (both targets
       compile/link, 71 test groups pass - unchanged, no new tests needed for a data-only addition).
+      **Update (2026-07-28, later same day)**: Min Volume/Linear-Log turned out to have confirmed
+      exact raw Bulk Rig tags (`Min `/`Tapr`) after all - see the `SlotParamsPanel` entry directly
+      below for how they ended up wired in as local-only (not live-CC) controls instead of staying
+      fully omitted.
+- [x] **Extended `SlotParamsPanel` to show params beyond a slot's live-CC range as local-only
+      controls (2026-07-28).** Prompted by Volume Pedal: a real Bulk Rig decode confirmed Min
+      Volume/Linear-Log's raw tags (`Min `/`Tapr`) match their CC-side keys exactly, but a live
+      hardware CC scan (every "gap" CC number the manual documents) found no CC for either - so
+      there's a confirmed decoded value but nothing to send. `rebuildForSelectedEffect()`'s render
+      loop no longer stops once `SlotConfig::settingCc` is exhausted - params beyond it now show too,
+      *if* `knownToggleStates`/`knownKnobValues` has a confirmed value for them, labelled "(not
+      synced)" and with no `onValueChange`/`onClick` handler (so nothing is ever sent) - otherwise
+      skipped exactly as before. Reusable by any future slot with the same "confirmed tag, no CC"
+      gap, not a Volume-Pedal-specific hack. Build-verified (both targets compile/link, 71 test
+      groups pass - unchanged, this is rendering logic only, no new data to test).
+- [x] **Built Amp/Cab's real per-model tone knobs from the official manual (2026-07-28), no
+      hardware access available.** Matched our 16 `EffectDefinitions::ampModelOptions()` names
+      against the manual's separate 31-model table (year-prefix formatting aside) - 15 of 16 matched
+      unambiguously; "67 Black Duo" doesn't cleanly match any of several similarly-named "Black X"
+      entries, so it uses "Black Panel Duo"'s layout as an explicitly flagged, unconfirmed guess
+      (user's explicit call - same confidence tier as the earlier Vibe Phaser extrapolation). Added
+      16 new synthetic-ID `EffectDefinition` entries (1000-1015, `1000 + ampModelOptions()` index -
+      see `EffectDefinitions.cpp`'s Amp/Cab section) rather than touching the real wire-level
+      `effectId=12` entry (`EffectDefinitionsTests.cpp`'s existing lookup(12) test locks that one
+      down unchanged) - solves the "one effect ID, 16 selectable models" shape mismatch that blocked
+      this before without needing new UI machinery: the synthetic IDs just slot into `SlotConfig`'s
+      existing "list of effectIds" mechanism directly.
+      New `"Amp/Cab"` `SlotConfig` entry (Bypass CC 111, Setting 1-14 = CC 13/14/15/16/21/10/112/3/
+      84/24/23/22/44/45) and `slotConfigNameForBlockId("amp")` mapping.
+      `SignalChainComponent::updateBlockDataFromRig()` resolves the real loaded model from the Bulk
+      Rig payload's "sld6" field (`1000 + sld6`, confirmed to match `ampModelOptions()`'s own index
+      scale in the "twenty-third round") instead of the always-12 wire effectId, so a live decode
+      pre-selects the actual model. Tone-knob VALUE readback explicitly not attempted (no real
+      non-default sample to reconcile against). **Not hardware-tested at all** - built entirely from
+      the manual while away from the unit; flagged for a real hardware pass whenever it's available
+      again. Build-verified (both targets compile/link, 73 test groups pass - 2 new, sanity-checking
+      the synthetic ID range resolves correctly and the real `effectId=12` lookup stays untouched).
+- [x] **Consolidated Rig Globals into the Signal Chain tab (2026-08-03).** Prototyped first as a
+      horizontal "Rig globals" row in `docs/mockups/signal-chain-editor-concept.html` (Main Volume,
+      Tuner On/Off, Tap Tempo, FX Loop Bypass/Send/Return/Mix, laid out as four side-by-side groups
+      rather than the original vertical stack), then ported directly into `SignalChainComponent`,
+      placed above the chain panel. All the logic/wiring (live two-way Main Volume sync via
+      `displayToRaw()`/`rawToDisplay()`, Tuner's device-confirmed-only status label, Tap Tempo's
+      momentary CC 64 send, FX Loop's fixed Bypass/Send/Return/Mix CCs) moved over unchanged from the
+      now-removed `RigGlobalsComponent` - same behaviour, just relaid-out horizontally and hosted in a
+      different component. The standalone "Globals" tab in `MainComponent` is now gone (removed
+      per the user's choice over keeping a duplicate second copy of these controls);
+      `RigGlobalsComponent.h`/`.cpp` deleted entirely and dropped from `CMakeLists.txt` rather than
+      left as dead code. Build-verified (both targets compile/link, 73 test groups pass - unchanged,
+      this is UI relocation only, no new data to test).
+- [x] **Removed the "Rig Browser" and "Effect Editor" tabs entirely (2026-08-03).** Both were fully
+      subsumed by the Signal Chain tab: `RigBrowserComponent`'s rig list + double-click-to-load is
+      the same `requestAllRigNames()`/`selectRig()` mechanism `SignalChainComponent`'s own preset
+      dropdown already used; `EffectEditorComponent`'s per-slot dropdown was already just a thin
+      wrapper around `SlotParamsPanel` (see its header comment) covering a strict subset of what
+      clicking a chain block now covers (Distortion/Wah/Mod/Reverb/Delay/FX1/FX2, but not Volume
+      Pedal/Amp-Cab, which only Signal Chain ever had). One real capability gap was found and
+      deliberately dropped, not silently lost: `RigBrowserComponent` tracked `RackController::
+      Listener::onCurrentRigReceived` (a live SysEx notification of whatever rig is actually loaded
+      on the unit right now, e.g. after a front-panel change) and highlighted that row with a `>`
+      marker - `SignalChainComponent`'s preset dropdown only reflects what's picked from the UI, with
+      no equivalent "here's what's actually loaded" indicator. Flagged to the user, who chose to drop
+      it rather than port it over. `RigBrowserComponent.h`/`.cpp` and `EffectEditorComponent.h`/`.cpp`
+      deleted entirely and dropped from `CMakeLists.txt`; `MainComponent` now hosts only "Diagnostics"
+      and "Signal Chain". Build-verified (both targets compile/link, 73 test groups pass - unchanged,
+      neither removed file was part of the test target).
 
 ## Not yet scheduled / parked
 
 - Python protocol-discovery logger (`mido`/`python-rtmidi`) — only needed now for gaps ElevenHack
   and the official CC chart don't cover. May end up largely unnecessary given how much Milestone 0-1
   already resolves from prior art.
-- **Reconcile the decoded Bulk Rig payload with `EffectDefinitions`/`EffectEditorComponent` so the
+- **Reconcile the decoded Bulk Rig payload with `EffectDefinitions`/`SlotParamsPanel` so the
   editor can auto-populate from what's actually loaded on the unit**, instead of requiring the user
   to pick the slot's model and every value by hand. The structural decode itself is now done (see
   `BulkRigParser` above, Milestone 5) - what remains is semantic, not byte-level:
@@ -670,7 +736,7 @@ Nothing above is trusted until confirmed against the real unit:
     there's nothing to extrapolate from without fabricating it. Build-verified, 3 new tests, 71 test
     groups total.
   - ~~Figure out the conversion from the Bulk Rig's signed-32-bit values to the 0-127 CC-scale
-    values `EffectEditorComponent`'s controls use~~ - **done for knob-kind params (2026-07-28,
+    values `SlotParamsPanel`'s controls use~~ - **done for knob-kind params (2026-07-28,
     "Round 2")**: user ran a real full-range sweep of Sine Wah's `Filt` knob (min/mid/max = raw
     `-2147483648`/`0`/`2147483647`) - the standard Q31 fixed-point pattern (full signed 32-bit range,
     linear, zero-centred). See protocol-spec.md "twenty-fourth round" for the formula. Applied to
@@ -699,22 +765,24 @@ Nothing above is trusted until confirmed against the real unit:
   - Not yet scoped into concrete steps - see protocol-spec.md Open Items for the same entry.
 - ~~Wire Volume Pedal, Amp/Cab, and FX Loop into `SlotParamsPanel`/`slotConfigs()`~~ - **Volume Pedal
   done (2026-07-28)**, see Milestone 5 above (Bypass=75, Position=7; Min Volume/Linear-Log have no
-  documented CC, omitted). **Amp/Cab and FX Loop still parked**: Amp doesn't fit `SlotConfig`'s "pick
-  an effect ID from a list" shape (one effect ID with 16 selectable models, not several effect IDs -
-  see the note in `EffectEditorComponent.h`) and Cab has no independently-known parameters at all;
-  FX Loop already has its own dedicated `RigGlobalsComponent` controls (fixed CCs, not a "Setting N"
-  slot) that could potentially be reused/duplicated here instead of built fresh.
+  documented CC, omitted). Amp doesn't fit `SlotConfig`'s "pick an effect ID from a list" shape (one
+  effect ID with 16 selectable models, not several effect IDs) and Cab has no independently-known
+  parameters at all; FX Loop already has its own dedicated controls in the "Rig globals" row above
+  the chain (fixed CCs, not a "Setting N" slot - see the "Consolidate Rig Globals into the Signal
+  Chain tab" entry below) that could potentially be reused/duplicated here instead of built fresh.
+  **Update**: Amp/Cab's tone knobs ARE now wired too, via the synthetic-ID approach - see the
+  "Built Amp/Cab tone knobs" entry in Milestone 5 above. Cab and FX Loop's own params remain as
+  described.
 - **Add chain-reordering UI to the Signal Chain tab.** The chain now shows each rig's real order
   (see the "Signal-chain editor UI" and its order-bug fix, both Milestone 5 above) but isn't
   user-editable - dragging a block around wouldn't do anything. Blocked on the same open question as
   before: whether the unit exposes writing a new order via MIDI/SysEx at all (see protocol-spec.md
   Open Items on the Bulk Rig/Rig Description relationship) - if not, this may end up staying
   display-only, or become a purely local/cosmetic reorder with no real effect.
-- **Amp/Cab tone-knob editor.** Blocked on two unresolved gaps, neither attempted yet: reconciling
-  the official manual's 31+ named amp models against `EffectDefinitions::ampModelOptions()`'s 16
-  (ported from ElevenHack) - several names (Black SR, Black Mini, J45, MS-30, RB01b...) don't
-  obviously match anything in the current list - and finding cabinet/mic-position mapping, which
-  isn't documented in either source at all. See protocol-spec.md Open Items for both.
+- ~~Amp/Cab tone-knob editor~~ - **done (2026-07-28)**, see Milestone 5 below: 15 of our 16
+  `ampModelOptions()` names reconciled unambiguously against the manual's 31-model table; "67 Black
+  Duo" uses a flagged, unconfirmed name-similarity guess. **Still parked**: cabinet/mic-position
+  mapping, which isn't documented in either source at all - Cab still has zero known parameters.
 - **Para EQ's "L Type"/"H Type" controls have no known CC.** The one candidate tested (CC 60 /
   Setting3) was ruled out for both. Deferred - doesn't block anything else in FX1/FX2. See
   protocol-spec.md Open Items ("twentieth round").
@@ -722,7 +790,7 @@ Nothing above is trusted until confirmed against the real unit:
   Dyn Delay). CC 59 was tested and ruled out (it's actually Dyn Delay's own "Env Mod Rate"). May have
   its own CC outside the numbering scheme entirely, or may not be MIDI-addressable at all (the manual
   describes it as toggled by a physical "SW2" switch). See protocol-spec.md Open Items.
-- **Hardware-verification debt on already-shipped `EffectEditorComponent` slots/controls.** Only
+- **Hardware-verification debt on already-shipped Signal Chain tab slots/controls.** Only
   Distortion's knobs and Chorus/Vibrato's knobs/Sync/Bypass/Mode toggle are independently confirmed
   against real hardware so far. Still untested: Wah, the other 5 Mod-slot effects, Reverb, all of
   FX1/FX2, BBD Delay's and Dyn Delay's individual knobs (only Tape Echo is fully confirmed), the

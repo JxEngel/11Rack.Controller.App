@@ -85,7 +85,9 @@ Universal amp CCs (all models): AMP BYPASS = CC111, AMP OUTPUT = CC92, CAB/MIC B
 
 Everything this section originally covered (Compression, Delay, Distortion, EQ, Modulation,
 Reverb, Volume Pedal/Wah, FX Loop/Tap Tempo/Tuner/Misc) has since been fully incorporated into
-`EffectDefinitions.cpp`/`EffectEditorComponent.cpp`/`RigGlobalsComponent.cpp`, cross-checked
+`EffectDefinitions.cpp`/`SlotConfig.cpp` (per-slot CC data, originally landed via a now-removed
+`EffectEditorComponent.cpp`) and `SignalChainComponent.cpp`'s "Rig globals" row (Tap Tempo/FX
+Loop/Tuner/Main Volume, originally a now-removed `RigGlobalsComponent.cpp`), cross-checked
 against real hardware where noted, and consolidated into
 [master-control-map.md](../master-control-map.md) - that file is now the current reference for all
 of it. This raw-extraction version was removed (2026-07-26) because several of its notes had gone

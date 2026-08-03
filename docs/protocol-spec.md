@@ -810,12 +810,12 @@ Summary retained here for quick reference:
       round-trip through full-rig bulk transfers in ElevenHack, never individually).
 - [ ] Verify the "CC 'Setting N' maps positionally" hypothesis for **non-knob** params (toggles,
       selectors) against real hardware — still knob-only confirmed (Distortion). However, the
-      Chorus/Vibrato and Vibe Phaser orderings now used in `EffectEditorComponent`'s Mod slot are
-      no longer a guess extending that hypothesis - they're sourced directly from the official
-      manual's own per-effect CC breakdown (see above), a stronger basis than before, just not yet
-      hardware-confirmed.
-- [ ] Wah, Mod, and Reverb slots in `EffectEditorComponent` (added/expanded 2026-07-24) are not yet
-      hardware-tested — only Distortion has been confirmed so far (see implementation-plan.md
+      Chorus/Vibrato and Vibe Phaser orderings now used in the Mod slot (`SlotConfig`/
+      `SlotParamsPanel`) are no longer a guess extending that hypothesis - they're sourced directly
+      from the official manual's own per-effect CC breakdown (see above), a stronger basis than
+      before, just not yet hardware-confirmed.
+- [ ] Wah, Mod, and Reverb slots (added/expanded 2026-07-24, now on the Signal Chain tab) are not
+      yet hardware-tested — only Distortion has been confirmed so far (see implementation-plan.md
       Milestone 5).
 - [ ] **New (2026-07-24)**: the official manual lists at least 31 distinct amp model names with
       real tone-knob CCs, vs. `EffectDefinitions::ampModelOptions()`'s 16 (ported from ElevenHack) —
@@ -847,8 +847,9 @@ Summary retained here for quick reference:
 - [x] FX1/FX2 were blocked on not knowing which effect family a given rig assigns to those flexible
       slots — **resolved (2026-07-24)**: user checked the real unit and found FX1/FX2 only ever
       host a fixed effect list (the 6 Mod-slot effects, plus Graphic EQ/Para EQ/Gray Compressor/
-      Dyn3 Compressor), not an open-ended assignment. Both slots now added to
-      `EffectEditorComponent` — see "eighteenth round" above. Vibe Phaser is now included too
+      Dyn3 Compressor), not an open-ended assignment. Both slots now added (originally to
+      `EffectEditorComponent`, since removed - see "eighteenth round" above and
+      implementation-plan.md). Vibe Phaser is now included too
       (added "nineteenth round") using its Mod-slot CCs extrapolated, not directly documented in
       the manual for this context. None of FX1/FX2 is hardware-tested yet.
 - [ ] "Fine" being present on all three delay types was the trigger for re-checking Multi Chorus's
@@ -860,8 +861,12 @@ Summary retained here for quick reference:
       anything else in FX1/FX2.
 - [x] Decode the Bulk Rig payload's byte structure — **resolved (2026-07-26)**, see "twenty-first
       round" above and `Source/Rack/BulkRigParser.h`/`.cpp`. The header/TOC/per-slot section format
-      is now fully decoded and shipped. **Still open** (semantic mapping, tracked in
-      docs/implementation-plan.md "Not yet scheduled / parked"): reconciling the TOC's
-      `effectId`/`category` numbering against `EffectDefinitions`'s own IDs, mapping raw field tags
-      onto `ParamDefinition::key`, and calibrating the signed-32-bit values against the 0-127 CC
-      scale — none of that is wired into `EffectEditorComponent` yet.
+      is now fully decoded and shipped. **Mostly resolved since** (see
+      docs/implementation-plan.md "Not yet scheduled / parked" for the full breakdown): the TOC's
+      `effectId`/`category` numbering was reconciled against `EffectDefinitions`'s own IDs
+      (2026-07-26/27), raw field tags were mapped onto `ParamDefinition::key` for confirmed/
+      best-effort matches (`SlotConfig::confirmedRawTagForKey()`/`bestEffortRawTagForKey()`), and
+      the signed-32-bit-to-0-127-CC-scale calibration was done for knob-kind params
+      (`SlotConfig::knobRawToCcValue()`) - all wired into `SlotParamsPanel`/`SignalChainComponent`.
+      Selector-kind params (`Sync`, `Type`, `sld6`, ...) remain explicitly unresolved - confirmed NOT
+      a single uniform formula there.

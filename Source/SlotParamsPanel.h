@@ -11,10 +11,13 @@
 #include <vector>
 
 // Reusable "pick which effect model is loaded into a slot, then edit its bypass + per-param
-// controls over MIDI CC" widget. Extracted (2026-07-27) from EffectEditorComponent so
-// SignalChainComponent can show the identical, hardware-validated editing UI when a chain block is
-// clicked, instead of a second copy that could drift out of sync with bugfixes made to one but not
-// the other.
+// controls over MIDI CC" widget. Originally extracted (2026-07-27) from a separate
+// EffectEditorComponent tab so SignalChainComponent could show the identical, hardware-validated
+// editing UI when a chain block is clicked, instead of a second copy that could drift out of sync
+// with bugfixes made to one but not the other. EffectEditorComponent itself was later removed
+// entirely (2026-08-03) once SignalChainComponent's click-a-chain-block flow covered everything it
+// did (and more - Volume Pedal/Amp-Cab, which EffectEditorComponent never had) - this is now the
+// only consumer.
 //
 // Two real limitations, both deliberate and documented rather than silently glossed over:
 //  1. There's no way to auto-detect which effect is actually loaded in a slot from MIDI CC alone -

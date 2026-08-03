@@ -34,9 +34,6 @@ target_sources(ElevenRackController PRIVATE
     Source/Main.cpp
     Source/MainComponent.cpp
     Source/DiagnosticsComponent.cpp
-    Source/RigBrowserComponent.cpp
-    Source/RigGlobalsComponent.cpp
-    Source/EffectEditorComponent.cpp
     Source/SlotConfig.cpp
     Source/SlotParamsPanel.cpp
     Source/SignalChainComponent.cpp

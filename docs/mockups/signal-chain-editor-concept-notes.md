@@ -19,6 +19,28 @@ decisions it embodies, what it does/doesn't prove yet, or open design questions 
   `RackController::setRigName()`/`saveRig()` - those are still flagged "NOT YET HARDWARE-VALIDATED"
   in `RackController.h`, so the buttons currently only update local UI state and status text. Wiring
   them to real hardware writes is a deliberate, separate decision for later.
+- Added a "Rig globals" section (2026-08-03) mirroring the then-separate `RigGlobalsComponent.cpp`'s
+  controls (Main Volume, Tuner On/Off + status line, Tap Tempo, FX Loop Bypass/Send/Return/Mix),
+  initially below the per-slot editor and stacked vertically, reusing the same `.row`/`.bypass-row`/
+  knob styling already established for the chain slot editors. Moved above the "Signal chain" label
+  (still 2026-08-03) and re-laid-out horizontally into four side-by-side groups (`.globals-panel`,
+  `.global-group`, `.knob-mini`) instead of one long vertical stack, per further iteration the same
+  day.
+- Ported into the real app (2026-08-03): `SignalChainComponent` now hosts this same horizontal "Rig
+  globals" row above the chain panel, with identical wiring/behaviour to the old
+  `RigGlobalsComponent` (live two-way Main Volume sync, device-confirmed-only Tuner status, momentary
+  Tap Tempo, fixed-CC FX Loop controls) - see docs/implementation-plan.md's dated entry. The
+  standalone "Globals" tab and `RigGlobalsComponent.h`/`.cpp` are gone entirely (the user's choice
+  over keeping a duplicate second copy of the same live controls) - this mockup's file-path
+  references to `RigGlobalsComponent.cpp` below are now historical (describing where this logic
+  used to live), not a pointer to a file that still exists.
+- **"Rig Browser" and "Effect Editor" tabs removed entirely (2026-08-03)**, once Signal Chain's own
+  preset dropdown and click-a-chain-block editing covered everything they did. One capability gap
+  (`RigBrowserComponent`'s live "which rig is actually loaded right now" indicator, via
+  `RackController::Listener::onCurrentRigReceived`) was found and flagged to the user, who chose to
+  drop it rather than port it into Signal Chain's dropdown - Signal Chain's preset selection only
+  ever reflects what was picked from the UI, with no equivalent. See docs/implementation-plan.md's
+  dated entry for the full breakdown.
 
 ## UI/UX design decisions
 
@@ -52,8 +74,8 @@ reverse-engineered from the HTML/JS later.
   Reasoning: saving a new name is a real write to the hardware (`RackController::setRigName()`,
   not yet hardware-validated - see docs/protocol-spec.md/implementation-plan.md), so it should
   require an unambiguous, confirmable moment before committing - consistent with how "Select Rig"
-  is already treated as its own deliberate action elsewhere in the app (`RigBrowserComponent`/
-  Diagnostics tab), not a side effect of some other interaction.
+  is already treated as its own deliberate action elsewhere in the app (the Diagnostics tab), not a
+  side effect of some other interaction.
 - **Rename popover shows the bank/slot location prefix (e.g. "Bank 0 A3") as fixed, non-editable
   static text - only the actual rig name is ever in the editable field.** The location comes from
   the rig's physical `RackController::RigId` (bank/slot position), which can never be changed;

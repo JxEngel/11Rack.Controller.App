@@ -6,15 +6,17 @@
 #include <optional>
 #include <vector>
 
-// One entry per editable slot, shared by EffectEditorComponent (per-slot dropdown) and
-// SignalChainComponent (click-a-block-in-the-chain). CC numbers are from the official MIDI CC
-// chart (docs/protocol-spec.md); `settingCc` is the slot's "Setting N" list in order, positionally
-// mapped to `EffectDefinition::params[1..]` (params[0] is always Bypass, handled separately via
-// `bypassCc`). Where a slot has fewer settingCc entries than a given effect has params (e.g. Wah),
-// the extra params are simply not rendered - not guessed.
+// One entry per editable slot, consumed by SignalChainComponent (click-a-block-in-the-chain) via
+// SlotParamsPanel. CC numbers are from the official MIDI CC chart (docs/protocol-spec.md);
+// `settingCc` is the slot's "Setting N" list in order, positionally mapped to
+// `EffectDefinition::params[1..]` (params[0] is always Bypass, handled separately via `bypassCc`).
+// Where a slot has fewer settingCc entries than a given effect has params (e.g. Wah), the extra
+// params are simply not rendered - not guessed.
 //
-// Extracted (2026-07-27) from EffectEditorComponent.cpp so SignalChainComponent can reuse the exact
-// same hardware-validated CC data via SlotParamsPanel, instead of a second, driftable copy.
+// Originally extracted (2026-07-27) from a separate EffectEditorComponent.cpp tab so
+// SignalChainComponent could reuse the exact same hardware-validated CC data via SlotParamsPanel,
+// instead of a second, driftable copy. EffectEditorComponent was later removed entirely
+// (2026-08-03) - see SlotParamsPanel.h.
 struct SlotConfig
 {
     juce::String name;

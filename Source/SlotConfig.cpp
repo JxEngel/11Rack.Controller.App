@@ -20,6 +20,25 @@ const std::vector<SlotConfig>& slotConfigs()
             "3 knobs).",
         },
         {
+            "Amp/Cab",
+            111, // "Amp Bypass" - universal across all models
+            { 13, 14, 15, 16, 21, 10, 112, 3, 84, 24, 23, 22, 44, 45 }, // "Amp Setting 1-14"
+            { 1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1012, 1013, 1014, 1015 },
+            1000, // "59 Tweed Lux" - no stronger signal to prefer another model, same "index 0"
+                  // default used elsewhere absent hardware evidence
+            "Real per-model tone knob labels sourced from the official Eleven Rack User Guide "
+            "(Chapter 9) - see EffectDefinitions.cpp's Amp/Cab section for the full reconciliation "
+            "against our 16-model list (15 of 16 matched with confidence; \"67 Black Duo\" is an "
+            "unconfirmed name-similarity guess, not as solid as the other 15). None of this is "
+            "hardware-tested yet - no Amp/Cab access was available while this was built. As with "
+            "every other slot, there's no way to SELECT a model via CC - the dropdown only labels "
+            "which model's knobs you're editing; only the loaded model's own knobs can be live-"
+            "adjusted. The model itself CAN be read from a live Bulk Rig decode (\"sld6\", confirmed "
+            "against real hardware) and pre-selects the dropdown, but no live readback for per-knob "
+            "values exists (MIDI CC has no query mechanism). Cab has no independently known "
+            "parameters at all - clicking the Cab block still shows the generic fallback.",
+        },
+        {
             "Volume Pedal",
             75, // "Volume Pedal Bypass"
             { 7 }, // "Volume Pedal Position" - the chart has no "Setting N" scheme here either

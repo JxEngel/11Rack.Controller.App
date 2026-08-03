@@ -62,6 +62,37 @@ public:
             }
         }
 
+        beginTest ("lookup(1000)/(1015) resolve the synthetic Amp/Cab per-model IDs, matching "
+                   "ampModelOptions()'s own index scale (1000 + index)");
+        {
+            auto first = EffectDefinitions::lookup (1000);
+            auto last = EffectDefinitions::lookup (1015);
+            expect (first.has_value());
+            expect (last.has_value());
+            if (first)
+                expectEquals (juce::String (first->name), juce::String ("59 Tweed Lux"));
+            if (last)
+                expectEquals (juce::String (last->name), juce::String ("DC Vintage Crunch"));
+
+            // Real effectId 12 (the actual wire-level Amp/Cab lookup) must stay completely
+            // untouched by adding these synthetic entries alongside it.
+            auto combined = EffectDefinitions::lookup (12);
+            expect (combined.has_value());
+            if (combined)
+                expectEquals ((int) combined->params.size(), 2);
+        }
+
+        beginTest ("lookup(1005) - \"67 Black Duo\" - is present but flagged as an unconfirmed guess");
+        {
+            // Not asserting exact param content here since it's explicitly an unconfirmed
+            // name-similarity guess (see EffectDefinitions.cpp) - just that it resolves at all and
+            // has more than just Bypass, i.e. the guessed layout was actually applied.
+            auto def = EffectDefinitions::lookup (1005);
+            expect (def.has_value());
+            if (def)
+                expect (def->params.size() > 1);
+        }
+
         beginTest ("lookup(55) returns Black Wah - the effect ID confirmed against a real "
                    "captured Rig Description reply (0x37 = 55 = WAH_BLACK)");
         {

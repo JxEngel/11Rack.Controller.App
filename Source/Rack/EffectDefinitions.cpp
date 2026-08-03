@@ -143,6 +143,143 @@ namespace Rack::EffectDefinitions
                 all.push_back (ampCab);
             }
 
+            // --- Amp/Cab per-model tone knobs (synthetic IDs 1000-1015, NOT real wire effectIds) ---
+            //
+            // The unit only ever reports effectId 12 for Amp/Cab on the wire, regardless of which
+            // model is loaded - the model itself is a PARAMETER (sld6, above), not a distinct
+            // effectId the way e.g. Distortion's 5 models each have their own. That's exactly why
+            // this couldn't fit SlotConfig's "pick a different effectId from a list" shape until now.
+            // These 16 entries exist purely for SlotConfig/
+            // SlotParamsPanel's own internal model-picking dropdown - IDs 1000+ can never collide
+            // with a real wire effectId (those are transmitted as single raw bytes, always small
+            // numbers) and are never looked up via a real decoded `EffectSlot::effectId` (always 12).
+            // 1000 + N matches ampModelOptions()'s own index N directly, so
+            // SignalChainComponent can resolve the real loaded model from a live decode's "sld6"
+            // value (confirmed 2026-07-27 to match this same index scale, "twenty-third round").
+            //
+            // Real per-model knob labels/order sourced from docs/samples/
+            // eleven-rack-user-guide-chapter9-midi-cc-notes.md's Chapter 9 extraction (Setting1-N,
+            // in CC order 13/14/15/16/21/10/112/3/84/24/23/22/44/45 - see SlotConfig.cpp's "Amp/Cab"
+            // entry for the actual CC numbers; only as many of the 14 are used as each model's own
+            // knob count, same variable-length-per-model pattern Distortion/Delay already use).
+            // NOT hardware-tested - manual-sourced only, same starting point Reverb/Delay/FX1/FX2
+            // all had before their own later hardware-confirmation rounds.
+            //
+            // 15 of our 16 `ampModelOptions()` names match the manual's (separate, larger) 31-model
+            // list unambiguously once the year-prefix formatting is set aside (e.g. "59 Tweed Lux" =
+            // "Tweed Lux"). The one exception is flagged at its own entry below.
+            addGroup (all, { 1000 }, "59 Tweed Lux", {
+                bypass(), knob ("Tone", "Tone"), knob ("IVol", "Instrument Volume"), knob ("MVol", "Mic Volume"),
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1001 }, "59 Tweed Bass", {
+                bypass(), knob ("Pres", "Presence"), knob ("Midl", "Middle"), knob ("Bass", "Bass"),
+                knob ("Trbl", "Treble"), knob ("BrVl", "Bright Volume"), knob ("NmVl", "Normal Volume"),
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1002 }, "64 Black Panel Lux Vib", {
+                bypass(), knob ("Volm", "Volume"), knob ("Trbl", "Treble"), knob ("Bass", "Bass"),
+                knob ("VbSp", "Vibrato Speed"), knob ("VbSy", "Vibrato Sync"), knob ("VbIn", "Vibrato Intensity"),
+                toggle ("VbOn", "Vibrato On/Off"), knob ("NGTh", "Noise Gate Threshold"),
+                knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1003 }, "64 Black Panel Lux Norm", {
+                // No "Vibrato On/Off" here - the manual's own Normal-channel entry omits it (matches
+                // that channel not having a vibrato circuit engaged), not an extraction gap.
+                bypass(), knob ("Volm", "Volume"), knob ("Trbl", "Treble"), knob ("Bass", "Bass"),
+                knob ("VbSp", "Vibrato Speed"), knob ("VbSy", "Vibrato Sync"), knob ("VbIn", "Vibrato Intensity"),
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1004 }, "66 AC Hi Boost", {
+                bypass(), knob ("NmVl", "Normal Volume"), knob ("BrVl", "Brilliant Volume"), knob ("Bass", "Bass"),
+                knob ("Trbl", "Treble"), knob ("Cut ", "Cut"), knob ("TrSp", "Tremolo Speed"),
+                knob ("TrSy", "Tremolo Sync"), knob ("TrDp", "Tremolo Depth"), toggle ("TrOn", "Tremolo On/Off"),
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            // "67 Black Duo" - UNCONFIRMED name-similarity guess, not an exact match (see the class
+            // doc comment/plan this was built from). The manual has several similarly-named "Black
+            // X" entries (Black Vib, Black SR, Black Mini, Black Panel Duo) and none obviously
+            // correspond to our "Black Duo" - this uses "Black Panel Duo"'s layout since it shares
+            // the distinctive "Duo" word, same confidence tier as the earlier Vibe Phaser CC
+            // extrapolation, not treated as solid as the other 15 models here.
+            addGroup (all, { 1005 }, "67 Black Duo", {
+                bypass(), knob ("Volm", "Volume"), knob ("Trbl", "Treble"), knob ("Midl", "Middle"),
+                knob ("Bass", "Bass"),
+                // Bare "Bright" (no "Volume"/"On-Off" suffix) - the manual doesn't disambiguate
+                // whether this is a knob or a switch. Defaults to knob, the same "safer default when
+                // uncertain" choice this project already made once for BBD Delay's Expanded Delay
+                // before it was hardware-corrected - flagged here rather than silently guessed.
+                knob ("Brgt", "Bright"),
+                knob ("VbSp", "Vibrato Speed"), knob ("VbSy", "Vibrato Sync"), knob ("VbIn", "Vibrato Intensity"),
+                toggle ("VbOn", "Vibrato On/Off"), knob ("NGTh", "Noise Gate Threshold"),
+                knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1006 }, "69 Plexiglas 100W", {
+                bypass(), knob ("Pres", "Presence"), knob ("Bass", "Bass"), knob ("Midl", "Middle"),
+                knob ("Trbl", "Treble"), knob ("Vol1", "Volume 1"), knob ("Vol2", "Volume 2"),
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1007 }, "82 Lead 800 100W", {
+                bypass(), knob ("Pres", "Presence"), knob ("Bass", "Bass"), knob ("Midl", "Middle"),
+                knob ("Trbl", "Treble"), knob ("PrVl", "Preamp Volume"), knob ("MsVl", "Master Volume"),
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1008 }, "85 M-2 Lead", {
+                bypass(), knob ("Volm", "Volume"), knob ("Trbl", "Treble"), knob ("Bass", "Bass"),
+                knob ("Midl", "Middle"), knob ("Driv", "Drive"), knob ("Mstr", "Master"),
+                // Bare "Bright" - see the "67 Black Duo" comment above for why this defaults to knob.
+                knob ("Brgt", "Bright"),
+                knob ("Pres", "Presence"), knob ("NGTh", "Noise Gate Threshold"),
+                knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1009 }, "89 SL-100 Drive", {
+                bypass(), knob ("Prmp", "Preamp"), knob ("Bass", "Bass"), knob ("Midl", "Middle"),
+                knob ("Trbl", "Treble"), knob ("Pres", "Presence"), knob ("Mstr", "Master"),
+                // "Mod" - the manual doesn't explain what this is (Crunch/Clean have "Bright" in this
+                // same table position instead - Drive alone has "Mod"). Kind is unconfirmed; defaults
+                // to knob for the same "safer default when uncertain" reason as bare "Bright" above.
+                knob ("Mod ", "Mod"),
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1010 }, "89 SL-100 Crunch", {
+                bypass(), knob ("Prmp", "Preamp"), knob ("Bass", "Bass"), knob ("Midl", "Middle"),
+                knob ("Trbl", "Treble"), knob ("Pres", "Presence"), knob ("Mstr", "Master"),
+                knob ("Brgt", "Bright"), // bare "Bright" - see "67 Black Duo" comment above
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1011 }, "89 SL-100 Clean", {
+                bypass(), knob ("Prmp", "Preamp"), knob ("Bass", "Bass"), knob ("Midl", "Middle"),
+                knob ("Trbl", "Treble"), knob ("Pres", "Presence"), knob ("Mstr", "Master"),
+                knob ("Brgt", "Bright"), // bare "Bright" - see "67 Black Duo" comment above
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1012 }, "92 Treadplate Modern", {
+                bypass(), knob ("Mstr", "Master"), knob ("Pres", "Presence"), knob ("Bass", "Bass"),
+                knob ("Midl", "Middle"), knob ("Trbl", "Treble"), knob ("Gain", "Gain"),
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1013 }, "92 Treadplate Vintage", {
+                bypass(), knob ("Mstr", "Master"), knob ("Pres", "Presence"), knob ("Bass", "Bass"),
+                knob ("Midl", "Middle"), knob ("Trbl", "Treble"), knob ("Gain", "Gain"),
+                knob ("NGTh", "Noise Gate Threshold"), knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1014 }, "DC Modern Overdrive", {
+                bypass(), knob ("Gain", "Gain"), knob ("Bass", "Bass"), knob ("Midl", "Middle"),
+                knob ("Trbl", "Treble"), knob ("Pres", "Presence"), knob ("Mstr", "Master"),
+                knob ("Brgt", "Bright"), // bare "Bright" - see "67 Black Duo" comment above
+                knob ("TrSp", "Tremolo Speed"), knob ("TrSy", "Tremolo Sync"), knob ("TrDp", "Tremolo Depth"),
+                toggle ("TrOn", "Tremolo On/Off"), knob ("NGTh", "Noise Gate Threshold"),
+                knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+            addGroup (all, { 1015 }, "DC Vintage Crunch", {
+                bypass(), knob ("Gain", "Gain"), knob ("Bass", "Bass"), knob ("Midl", "Middle"),
+                knob ("Trbl", "Treble"), knob ("Pres", "Presence"), knob ("Mstr", "Master"),
+                knob ("Brgt", "Bright"), // bare "Bright" - see "67 Black Duo" comment above
+                knob ("TrSp", "Tremolo Speed"), knob ("TrSy", "Tremolo Sync"), knob ("TrDp", "Tremolo Depth"),
+                toggle ("TrOn", "Tremolo On/Off"), knob ("NGTh", "Noise Gate Threshold"),
+                knob ("NGRl", "Noise Gate Release"), knob ("Out ", "Output"),
+            });
+
             // --- Volume Pedal ---
             addGroup (all, { 38, 72 }, "Volume Pedal", {
                 bypass(), knob ("Vol ", "Position"), knob ("Min ", "Min Volume"), toggle ("Tapr", "Linear/Log"),
@@ -183,7 +320,7 @@ namespace Rack::EffectDefinitions
             // assignment confirmed in the official Eleven Rack User Guide, Chapter 9 ("as MOD":
             // Chorus=CC61/Setting1, Rate=CC52/Setting2, Sync=CC53/Setting3, Depth=CC54/Setting4,
             // the Chorus/Vibrato mode toggle=CC57/Setting5 - toggle LAST, not first). This order is
-            // what `EffectEditorComponent`'s positional Setting-N mapping depends on; the original
+            // what SlotParamsPanel's positional Setting-N mapping depends on; the original
             // ElevenHack-field order silently produced a wrong mapping (Mode toggle sent on Setting
             // 1 instead of Setting 5) until this fix, caught before any hardware test of this slot.
             addGroup (all, { 11, 39, 40 }, "Chorus/Vibrato", {
@@ -234,11 +371,11 @@ namespace Rack::EffectDefinitions
             // shared "Setting N" CC numbers independently (as MOD: Bypass=50, Rate=61/Setting1,
             // Sync=52/Setting2, Depth=53/Setting3, Pre-Delay=54/Setting4, Mix=57/Setting5,
             // Tri/Sine=51/Setting6, Voices=56/Setting7). Also uses two CCs (89, 90) outside the
-            // officially-named "Modulation Setting 1-7" list - the Mod slot's `settingCc` array in
-            // EffectEditorComponent.cpp was extended to 9 entries to reach them.
+            // officially-named "Modulation Setting 1-7" list - the "Mod" `SlotConfig` entry's
+            // `settingCc` array (SlotConfig.cpp) was extended to 9 entries to reach them.
             //
             // Width/Lo Cut order corrected (2026-07-24) while reconciling this effect's FX1/FX2
-            // CC data (see EffectEditorComponent.cpp's new FX1/FX2 slots): the manual's own
+            // CC data (see SlotConfig.cpp's FX1/FX2 slots): the manual's own
             // *named* param order lists "Lo Cut" before "Width", but the FX1 CC list (a
             // well-established, independently-cross-checked table) shows Width landing on the
             // lower-numbered Setting slot (Setting8) and Lo Cut on the higher one (Setting9) - the
@@ -344,9 +481,9 @@ namespace Rack::EffectDefinitions
             // Guide, Chapter 9 (Bypass=107, Send=19, Return=108, Mix=88). Unlike every other slot
             // in this file, FX Loop's CCs are fixed/direct, not a "Setting N" positional scheme -
             // there's only ever one FX Loop, not several selectable models, so it doesn't fit
-            // `EffectEditorComponent`'s "pick a model, map its knobs positionally" pattern. Exposed
-            // directly in `RigGlobalsComponent` instead, with fixed CCs, same as Tap Tempo. Not yet
-            // hardware-tested.
+            // `SlotConfig`/`SlotParamsPanel`'s "pick a model, map its knobs positionally" pattern.
+            // Exposed directly in `SignalChainComponent`'s "Rig globals" row instead, with fixed
+            // CCs, same as Tap Tempo. Not yet hardware-tested.
             addGroup (all, { 16, 17, 56, 57, 73, 14, 15 }, "Fx Loop", {
                 bypass(), knob ("Send", "Send"), knob ("Retn", "Return"), knob ("Mix ", "Mix"),
             });
@@ -405,7 +542,7 @@ namespace Rack::EffectDefinitions
             // own standalone CC set. Previously name-only - promoted to fully known using the
             // official Eleven Rack User Guide, Chapter 9, with real order reconstructed via
             // CC-to-Setting-N lookup (same method as Delay) rather than trusting print order.
-            // Not yet hardware-tested. See EffectEditorComponent.cpp's new FX1/FX2 slots.
+            // Not yet hardware-tested. See SlotConfig.cpp's FX1/FX2 slots.
             addGroup (all, { 32 }, "Gray Compressor", {
                 bypass(), knob ("Sust", "Sustain"), knob ("Levl", "Level"),
             });

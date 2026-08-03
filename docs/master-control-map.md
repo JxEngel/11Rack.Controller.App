@@ -3,14 +3,13 @@
 **Purpose**: this is the single, current, self-contained reference for every control this project
 has mapped to a MIDI Control Change (CC) number and value/dropdown meaning. If you're starting from
 scratch and need to know "what CC does X control, and what values does it take," this file should
-answer it without needing to read `EffectDefinitions.cpp`, `EffectEditorComponent.cpp`, or the long
-narrative history in `protocol-spec.md`.
+answer it without needing to read `EffectDefinitions.cpp`, `SlotConfig.cpp`, or the long narrative
+history in `protocol-spec.md`.
 
 **This file is a snapshot, not the source of truth for code.** `Source/Rack/EffectDefinitions.cpp`
-and `Source/EffectEditorComponent.cpp` are what the app actually runs; if this file and the code
-ever disagree, the code is right and this file is stale - regenerate it from the code, not the
-other way around. Built 2026-07-26 from a direct read of both files plus `protocol-spec.md`'s
-official CC chart.
+and `Source/SlotConfig.cpp` are what the app actually runs; if this file and the code ever disagree,
+the code is right and this file is stale - regenerate it from the code, not the other way around.
+Built 2026-07-26 from a direct read of both files plus `protocol-spec.md`'s official CC chart.
 
 **What this file does NOT replace**: `protocol-spec.md`'s hardware-validation log (the full history
 of how each mapping was found/corrected, useful if a mapping turns out wrong and you want to know
@@ -71,8 +70,8 @@ These aren't effect-selectable - there's exactly one of each on the whole unit.
 | Control | CC | Type | Values | Status | Notes |
 |---|---|---|---|---|---|
 | Tuner On/Off | 69 | toggle | 0-63=Off, 64-127=On | HW-confirmed | Also settable via SysEx `CMD_TUNER` (`RackController::setTunerOn`) - both mechanisms work independently. No query either way. |
-| Tap Tempo | 64 | momentary | 64-127 = a tap | manual | `RigGlobalsComponent`'s "Tap" button sends 127 on click. Not a persistent value. |
-| FX Loop Bypass | 107 | toggle | 0-63=Off, 64-127=On | manual | Implemented directly in `RigGlobalsComponent` via its own hardcoded constants, not through `EffectDefinitions`'s "Fx Loop" entry (which models the same Bypass/Send/Return/Mix params but isn't referenced by any UI code - a redundant, currently-unused model). |
+| Tap Tempo | 64 | momentary | 64-127 = a tap | manual | `SignalChainComponent`'s "Rig globals" row "Tap" button sends 127 on click. Not a persistent value. |
+| FX Loop Bypass | 107 | toggle | 0-63=Off, 64-127=On | manual | Implemented directly in `SignalChainComponent`'s "Rig globals" row via its own hardcoded constants, not through `EffectDefinitions`'s "Fx Loop" entry (which models the same Bypass/Send/Return/Mix params but isn't referenced by any UI code - a redundant, currently-unused model). |
 | FX Loop Send | 19 | knob | 0-127 | manual | |
 | FX Loop Return | 108 | knob | 0-127 | manual | |
 | FX Loop Mix | 88 | knob | 0-127 | manual | |
@@ -94,7 +93,8 @@ These aren't effect-selectable - there's exactly one of each on the whole unit.
 **Main Volume is NOT a plain CC** - it uses a separate SysEx command (`CMD_MAIN_VOLUME`, a 5-byte
 signed-value encoding via `SevenBitCodec::encodeValue`/`RackController::setMainVolume(int8_t)`).
 Confirmed range: raw `-127` = unit display `0.0` (min), raw `0` = display `5.0` (center), raw `127`
-= display `10.0` (max). `RigGlobalsComponent`'s slider shows the 0.0-10.0 display scale directly.
+= display `10.0` (max). `SignalChainComponent`'s Main Volume slider shows the 0.0-10.0 display scale
+directly.
 
 **The shared tempo-sync selector** (`ccSyncSelector` in code) - used by every "Sync" parameter
 across Mod and Delay effects (see §3) - is not itself a Setting-N slot, but its value table is
@@ -280,7 +280,7 @@ Notch), confirmed on real hardware 2026-07-24. Neither has a known CC - see §4.
 | VxCr | Wah (both models) | Real knob, exists in `EffectDefinitions` | No CC anywhere in the manual |
 | Fine | All 3 Delay effects | Confirmed present on hardware, on/off | No known CC; CC 59 tested and ruled out (2026-07-24) |
 | L Type / H Type | Para EQ (FX1/FX2) | Confirmed present on hardware, 6-option selectors each | No known CC; CC 60 (Setting 3, the one known gap) tested and ruled out for both (2026-07-24) |
-| Amp tone knobs | Amp/Cab | CC numbers known (§1's Amp row: Setting 1-14), and ~31 real amp model names with their own knob labels are documented in `docs/samples/eleven-rack-user-guide-chapter9-midi-cc-notes.md` | Not wired into `EffectDefinitions`/`EffectEditorComponent` at all - needs a different UI shape (one effect ID with many selectable models, not many effect IDs), and the model list itself needs reconciling (`EffectDefinitions::ampModelOptions()` only has 16, manual has ~31) |
+| Amp tone knobs | Amp/Cab | **Wired 2026-07-28** - see below | Not hardware-tested (no unit access at the time); "67 Black Duo"'s knob layout is an unconfirmed name-similarity guess, not as solid as the other 15 models |
 | Volume Pedal, Multi FX Control, Rig Volume pedal | Rig-level | CC numbers confirmed (§2) | Not exposed in any UI component yet (Volume Pedal's params are modeled in `EffectDefinitions` already; the pedal position CCs just aren't wired to a control) |
 
 **Extrapolated, not directly documented**: Vibe Phaser's FX1/FX2 CC mapping (§3, FX1/FX2 section) -
@@ -299,20 +299,44 @@ values, so the app could read what's actually loaded instead of requiring manual
 selection everywhere in this file. See `docs/implementation-plan.md` "Not yet scheduled / parked"
 and `protocol-spec.md` Open Items - tracked separately, not part of this CC-mapping effort.
 
+**Amp/Cab tone knobs, wired 2026-07-28**: CC numbers (§1's Amp row, Setting 1-14, bypass CC 111)
+were already known; what was missing was per-model knob labels and a UI shape that could handle
+"one effect ID, 16 selectable models" instead of "many effect IDs." Both resolved: matched our 16
+`ampModelOptions()` names against the manual's separate 31-model table (year-prefix formatting
+aside, e.g. "59 Tweed Lux" = "Tweed Lux") - **15 of 16 matched unambiguously**; the exception, "67
+Black Duo," doesn't cleanly match any of the manual's several similarly-named "Black X" entries, so
+it uses "Black Panel Duo"'s layout as an explicitly flagged, unconfirmed guess (same tier as the
+Vibe Phaser FX1/FX2 extrapolation above). Modeled as 16 new synthetic-ID `EffectDefinition` entries
+(1000-1015, `1000 + ampModelOptions()` index - see `EffectDefinitions.cpp`'s Amp/Cab section) rather
+than touching the real wire-level `effectId=12` entry, since `SlotConfig`/`SlotParamsPanel` need
+distinct IDs per selectable model but the unit only ever reports 12 regardless of which model is
+loaded. `SignalChainComponent` resolves the real per-model ID from the Bulk Rig payload's "sld6"
+field (confirmed to match `ampModelOptions()`'s own index scale - "twenty-third round"), so a live
+decode pre-selects the actual loaded model. **Not hardware-tested at all** - built with no unit
+access; tone-knob VALUE readback (unlike the model selection itself) was not attempted, since there's
+no real non-default Amp/Cab sample to reconcile raw tags against yet.
+
 ---
 
-## 5. Effects modeled but not exposed in any `EffectEditorComponent` slot
+## 5. Effects modeled but not exposed in any Signal Chain tab slot
 
 These exist in `EffectDefinitions.cpp` (so their real parameters are known, where known) but have
 no corresponding UI slot yet:
 
 - **Volume Pedal** (IDs 38, 72): Bypass, Position (knob), Min Volume (knob), Linear/Log (toggle).
-  CCs for Bypass (75) and Position (7) are known (§2); Min Volume/Linear-Log have no documented CC.
-  **Wired into a real `SlotConfig` (2026-07-28)**: the Signal Chain tab's "Volume" block now opens
-  the same live-CC editor as every other mapped slot, sending Bypass (CC 75) and Position (CC 7) -
-  Min Volume/Linear-Log stay omitted rather than guessed, same treatment as Wah's second knob.
-- **Amp/Cab** (ID 12): Bypass (CC 111, §2) + a 16-option Amp type selector - see §4 for why the
-  real tone knobs (CC 13/14/15/16/21/10/112/3/84/24/23/22/44/45) aren't wired up.
+  CCs for Bypass (75) and Position (7) are known (§2); Min Volume/Linear-Log have no documented CC -
+  confirmed via a real hardware CC scan (all of the manual's documented "gap" CC numbers tested,
+  none moved either control - see protocol-spec.md's CC-sniffer round). **Wired into a real
+  `SlotConfig` (2026-07-28)**: the Signal Chain tab's "Volume" block opens the same live-CC editor
+  every other mapped slot uses for Bypass (CC 75) and Position (CC 7). Min Volume/Linear-Log's raw
+  Bulk Rig tags (`Min `/`Tapr`) turned out to match their CC-side keys exactly, so they're shown as
+  local-only controls instead - pre-filled from the decode, editable, but not sent anywhere (no CC
+  exists) - see `SlotParamsPanel`'s "beyond `settingCc`'s range" rendering, a reusable mechanism now
+  available to any other slot with the same gap.
+- **Amp/Cab** (ID 12): Bypass (CC 111, §2) + a 16-option Amp type selector - real tone knobs (CC
+  13/14/15/16/21/10/112/3/84/24/23/22/44/45) **now wired (2026-07-28)**, see §4 for the full
+  writeup. Cab itself still has zero independently-known parameters - clicking the Cab block still
+  shows the generic fallback.
 - **Rig Params** (ID -1, rig-level globals): Volume, Mono/Stereo, Tempo, 4× Fxc slots, GlSF, Msyc,
   RslL, Vol1, Vol2, Input Selector (9 options), a constant field, True Z Selector (13 options),
   Exp. Pedal Selector (5 options). These are SysEx bulk-rig fields, not live MIDI CC parameters - no

@@ -4,9 +4,6 @@
 #include "Rack/MidiTransport.h"
 #include "Rack/RackController.h"
 #include "DiagnosticsComponent.h"
-#include "RigBrowserComponent.h"
-#include "RigGlobalsComponent.h"
-#include "EffectEditorComponent.h"
 #include "SignalChainComponent.h"
 
 // The app's top-level shell: owns the single RackController instance and the shared device
@@ -45,9 +42,6 @@ private:
 
     Rack::RackController controller;
     DiagnosticsComponent diagnosticsComponent { controller };
-    RigBrowserComponent rigBrowserComponent { controller };
-    RigGlobalsComponent rigGlobalsComponent { controller };
-    EffectEditorComponent effectEditorComponent { controller };
     SignalChainComponent signalChainComponent { controller };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)

@@ -19,8 +19,8 @@ namespace Rack::SevenBitCodec
     // real hardware (2026-07-24): Main Volume raw value 0 displayed as "5.0" on the unit's own
     // screen (the *center* of its 0.0-10.0 scale, not the minimum), and raw 127 displayed as
     // "10.0" (the maximum) - i.e. the true range is signed, roughly [-127, 127], centered at 0.
-    // See docs/protocol-spec.md and RigGlobalsComponent for the display-value conversion this
-    // enables.
+    // See docs/protocol-spec.md and SignalChainComponent::displayToRaw()/rawToDisplay() for the
+    // display-value conversion this enables.
     //
     // Values 126 and 127 hit a special-cased "full-scale" encoding distinct from the general
     // linear formula used for everything else (verified: encodes to exactly 3F 7F 7F 7F 0F,

@@ -12,7 +12,7 @@
 
 // Visual signal-chain editor (Milestone 5) - ports docs/mockups/signal-chain-editor-concept.html
 // into the real app. Shows the unit's real signal path and lets you click a block to edit it via
-// the same hardware-validated SlotParamsPanel EffectEditorComponent uses.
+// the same hardware-validated SlotParamsPanel widget.
 //
 // CHAIN ORDER, corrected 2026-07-27: BulkRigParser::ParsedRig::slots is already in the real
 // signal-chain position order (letters C..L map directly to chain position - confirmed against a
@@ -36,13 +36,21 @@
 // block being dragged past them - see ChainDropArea below for how the always-adjacent Amp/Cab pair
 // stays un-splittable during a drop.
 //
-// The preset dropdown lists real rig names (fetched via RackController::requestAllRigNames(), same
-// mechanism RigBrowserComponent uses) - selecting one calls selectRig() then requestBulkRig() to
-// refresh the chain with that rig's real order and data. When a Bulk Rig reply arrives, each slot's
+// The preset dropdown lists real rig names (fetched via RackController::requestAllRigNames()) -
+// selecting one calls selectRig() then requestBulkRig() to refresh the chain with that rig's real
+// order and data. When a Bulk Rig reply arrives, each slot's
 // real effect name comes from BulkRigParser + EffectDefinitions, and clicking a block pre-selects
 // the real model/bypass state, and any toggle/knob values bestEffortRawTagForKey() has a raw tag
 // for (see SlotConfig.h's bestEffortRawTagForKey()/knobRawToCcValue()) in the editor panel below - see
 // SlotParamsPanel.h for why selectors still can't be read back this way (no confirmed encoding yet).
+//
+// Also hosts the "Rig globals" row (Main Volume, Tuner, Tap Tempo, FX Loop) above the chain itself
+// (2026-08-03) - consolidated here from a formerly-separate "Globals" tab (see the standalone
+// `RigGlobalsComponent` this replaced, now removed) per docs/mockups/signal-chain-editor-concept.html's
+// horizontal layout. Unlike the per-effect slots below, these are rig-level utilities with exactly
+// one instance each, so they're wired directly to RackController here rather than through
+// SlotParamsPanel's CC-send machinery - same live two-way sync (Main Volume) / momentary-send (Tap
+// Tempo) / no-query-exists (Tuner) behaviour the old RigGlobalsComponent had.
 class SignalChainComponent : public juce::Component,
                               public juce::DragAndDropContainer,
                               private Rack::RackController::Listener
@@ -95,8 +103,7 @@ private:
 
     // Small custom-painted widget for one chain block - a plain juce::Button doesn't easily support
     // a two-line label+sub-label with fixed/reorderable/selected border colouring, so this paints
-    // itself directly (same custom-drawing approach RigBrowserComponent::paintListBoxItem already
-    // uses for its rows). Also a SettableTooltipClient so a truncated sub-label's full value is
+    // itself directly. Also a SettableTooltipClient so a truncated sub-label's full value is
     // still available on hover - see docs/mockups/signal-chain-editor-concept-notes.md.
     //
     // Drag source for reordering: `draggable` is false for Input/Output (never move at all) AND for
@@ -219,16 +226,25 @@ private:
     // yet fetched) - not confirmed against any real rig, just a placeholder.
     static std::vector<ChainBlock> buildDefaultChain();
 
-    // "A1".."Z4" - same scheme as RigBrowserComponent::rigLocationLabel (letterIndex = rig/4,
-    // number = rig%4 + 1) - duplicated here rather than shared, since RigBrowserComponent's fetch
-    // state isn't otherwise reused (see docs/implementation-plan.md for why this tab has its own
-    // dedicated preset dropdown instead of just reusing the Rig Browser tab).
+    // "A1".."Z4" - matches ElevenRack.java's m_rigLocToName scheme (letterIndex = rig/4,
+    // number = rig%4 + 1) - verified against the real hardware's own front-panel display (see
+    // docs/protocol-spec.md).
     static juce::String rigLocationLabel (int rigWithinBank);
 
     // Rack::RackController::Listener
     void onRigNameReceived (Rack::RackController::RigId rig, const std::string& name) override;
     void onRigNameFetchComplete() override;
     void onBulkRigReceived (const std::vector<uint8_t>& decodedTfxBytes) override;
+    void onMainVolumeReceived (int volume) override;
+    void onTunerStateReceived (bool isOn) override;
+
+    // Linear map confirmed against real hardware (originally in the now-removed
+    // RigGlobalsComponent): raw 0 <-> display 5.0 (center), raw 127 <-> display 10.0 (max);
+    // symmetric down to raw -127 <-> display 0.0 (min, not yet independently confirmed since this
+    // range was unreachable before the encodeValue sign fix, but consistent with the confirmed
+    // points and the wire format being a signed byte).
+    static int8_t displayToRaw (double display);
+    static double rawToDisplay (int raw);
 
     // juce::DragAndDropContainer - hides the source Block while it's being dragged, so it looks
     // properly "picked up" (removed from the row) instead of a dragged copy AND the still-visible
@@ -249,6 +265,37 @@ private:
     juce::TextButton saveToUnitButton { "Save to Unit" };
     juce::TextButton refreshRigListButton { "Refresh Rig List" };
     juce::Label rigStatusLabel;
+
+    // "Rig globals" row - see the class doc comment. Laid out horizontally (one group per
+    // control cluster) matching docs/mockups/signal-chain-editor-concept.html's ".globals-panel",
+    // above the chain itself.
+    juce::Label globalsLabel { {}, "Rig globals" };
+
+    juce::Label volumeLabel { {}, "Main Volume" };
+    juce::Slider volumeSlider;
+
+    juce::Label tunerLabel { {}, "Tuner" };
+    juce::TextButton tunerOnButton  { "Tuner On" };
+    juce::TextButton tunerOffButton { "Tuner Off" };
+    juce::Label tunerStatusLabel;
+
+    juce::Label tapTempoLabel { {}, "Tap Tempo" };
+    juce::TextButton tapTempoButton { "Tap" };
+
+    juce::Label fxLoopLabel { {}, "FX Loop" };
+    juce::ToggleButton fxLoopBypassToggle { "Bypass" };
+    juce::Label fxLoopSendLabel { {}, "Send" };
+    juce::Slider fxLoopSendSlider;
+    juce::Label fxLoopReturnLabel { {}, "Return" };
+    juce::Slider fxLoopReturnSlider;
+    juce::Label fxLoopMixLabel { {}, "Mix" };
+    juce::Slider fxLoopMixSlider;
+
+    // Set by resized(), drawn by paint() - the bordered/filled panel behind the globals row,
+    // matching the chain panel's own background (see paint()). Not a child Component/Viewport like
+    // chainContent/chainViewport, since the globals row's children are plain direct members, not one
+    // single "content" component whose own getBounds() could be reused the way chainViewport's is.
+    juce::Rectangle<int> globalsPanelBounds;
 
     juce::Label chainLabel { {}, "Signal chain" };
     juce::Viewport chainViewport;

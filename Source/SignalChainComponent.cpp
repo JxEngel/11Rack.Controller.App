@@ -1,6 +1,7 @@
 #include "SignalChainComponent.h"
 #include "SlotConfig.h"
 
+#include <cmath>
 #include <limits>
 
 using Rack::RackController;
@@ -17,6 +18,28 @@ namespace
     constexpr int kArrowWidth = 10;
     constexpr int kGroupPadding = 3; // matches .amp-cab-group's CSS padding
     constexpr int kChainPanelPadding = 10; // matches .chain-panel's CSS padding
+
+    // Rig globals (Main Volume/Tuner/Tap Tempo/FX Loop) - ported from the now-removed
+    // RigGlobalsComponent, see the class doc comment.
+    constexpr double kDisplayCenter = 5.0;
+    constexpr double kDisplayHalfRange = 5.0;
+    constexpr double kRawHalfRange = 127.0;
+
+    // Fixed CCs, per the official MIDI CC chart (docs/protocol-spec.md) - not part of any
+    // per-effect "Setting N" positional scheme, since there's only one Tap Tempo and one FX Loop.
+    constexpr uint8_t kTapTempoCc = 64;      // "Tap Tempo" - 64-127 = a tap
+    constexpr uint8_t kFxLoopBypassCc = 107; // "FX Loop On/Off"
+    constexpr uint8_t kFxLoopSendCc = 19;    // "FX Loop Send"
+    constexpr uint8_t kFxLoopReturnCc = 108; // "FX Loop Return"
+    constexpr uint8_t kFxLoopMixCc = 88;     // "FX Loop Mix"
+
+    void setupGlobalsKnob (juce::Slider& slider)
+    {
+        slider.setRange (0, 127, 1);
+        slider.setValue (64, juce::dontSendNotification);
+        slider.setSliderStyle (juce::Slider::LinearHorizontal);
+        slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 46, 22);
+    }
 
     // Best-guess order shown before any real Bulk Rig decode - NOT confirmed against any real rig
     // (see SignalChainComponent::buildDefaultChain()). Once a decode arrives, the real per-rig order
@@ -65,9 +88,10 @@ namespace
         }
     }
 
-    // Which SlotConfig (see SlotConfig.cpp) a chain block should open in the editor panel. Amp/Cab/
-    // FX Loop still have no SlotConfig (no confirmed CC data to build one from yet) - clicking those
-    // shows the fallback label.
+    // Which SlotConfig (see SlotConfig.cpp) a chain block should open in the editor panel. Cab/FX
+    // Loop still have no SlotConfig (no independently-known parameters for Cab at all; FX Loop
+    // already has its own dedicated controls in the "Rig globals" row above the chain) - clicking
+    // those shows the fallback label.
     juce::String slotConfigNameForBlockId (const juce::String& id)
     {
         if (id == "disto") return "Distortion";
@@ -78,6 +102,7 @@ namespace
         if (id == "fx1") return "FX1";
         if (id == "fx2") return "FX2";
         if (id == "vol") return "Volume Pedal";
+        if (id == "amp") return "Amp/Cab";
         return {};
     }
 
@@ -438,6 +463,18 @@ void SignalChainComponent::dragOperationEnded (const juce::DragAndDropTarget::So
     draggedBlockId = {};
 }
 
+int8_t SignalChainComponent::displayToRaw (double display)
+{
+    double raw = (display - kDisplayCenter) * (kRawHalfRange / kDisplayHalfRange);
+    raw = juce::jlimit (-127.0, 127.0, raw);
+    return static_cast<int8_t> (std::lround (raw));
+}
+
+double SignalChainComponent::rawToDisplay (int raw)
+{
+    return kDisplayCenter + (static_cast<double> (raw) * (kDisplayHalfRange / kRawHalfRange));
+}
+
 SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUse)
     : paramsPanel (controllerToUse), controller (controllerToUse)
 {
@@ -448,6 +485,23 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
     addAndMakeVisible (saveToUnitButton);
     addAndMakeVisible (refreshRigListButton);
     addAndMakeVisible (rigStatusLabel);
+    addAndMakeVisible (globalsLabel);
+    addAndMakeVisible (volumeLabel);
+    addAndMakeVisible (volumeSlider);
+    addAndMakeVisible (tunerLabel);
+    addAndMakeVisible (tunerOnButton);
+    addAndMakeVisible (tunerOffButton);
+    addAndMakeVisible (tunerStatusLabel);
+    addAndMakeVisible (tapTempoLabel);
+    addAndMakeVisible (tapTempoButton);
+    addAndMakeVisible (fxLoopLabel);
+    addAndMakeVisible (fxLoopBypassToggle);
+    addAndMakeVisible (fxLoopSendLabel);
+    addAndMakeVisible (fxLoopSendSlider);
+    addAndMakeVisible (fxLoopReturnLabel);
+    addAndMakeVisible (fxLoopReturnSlider);
+    addAndMakeVisible (fxLoopMixLabel);
+    addAndMakeVisible (fxLoopMixSlider);
     addAndMakeVisible (chainLabel);
     addAndMakeVisible (chainViewport);
     addAndMakeVisible (paramsPanel);
@@ -466,6 +520,55 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
         handleChainReorder (draggedId, insertBeforeChainIndex);
     };
     chainContent.onHoverChanged = [this] (int hoveredGapIndex) { updateChainHoverPreview (hoveredGapIndex); };
+
+    // Rig globals - ported directly from the now-removed RigGlobalsComponent, see the class doc
+    // comment. Shows the unit's own 0.0-10.0 display scale, not the raw wire value - see
+    // displayToRaw().
+    volumeSlider.setRange (0.0, 10.0, 0.1);
+    volumeSlider.setValue (kDisplayCenter, juce::dontSendNotification);
+    volumeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    volumeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 22);
+
+    // Live two-way sync: dragging sends on every change. Receiving a device-confirmed value
+    // (onMainVolumeReceived, below) moves the slider with dontSendNotification so it doesn't loop
+    // back into another send.
+    volumeSlider.onValueChange = [this]
+    {
+        controller.setMainVolume (displayToRaw (volumeSlider.getValue()));
+    };
+
+    tunerStatusLabel.setText ("Tuner state: unknown (no query exists)", juce::dontSendNotification);
+
+    tunerOnButton.onClick = [this] { controller.setTunerOn (true); };
+    tunerOffButton.onClick = [this] { controller.setTunerOn (false); };
+
+    // Momentary - one click, one tap. Nothing to read back or sync.
+    tapTempoButton.onClick = [this] { controller.sendMidiCc (kTapTempoCc, 127); };
+
+    fxLoopBypassToggle.onClick = [this]
+    {
+        bool bypassed = fxLoopBypassToggle.getToggleState();
+        // 0-63 = Off, 64-127 = On, per the official CC chart.
+        controller.sendMidiCc (kFxLoopBypassCc, bypassed ? 0 : 127);
+    };
+
+    setupGlobalsKnob (fxLoopSendSlider);
+    fxLoopSendSlider.onValueChange = [this]
+    {
+        controller.sendMidiCc (kFxLoopSendCc, static_cast<uint8_t> (static_cast<int> (fxLoopSendSlider.getValue())));
+    };
+
+    setupGlobalsKnob (fxLoopReturnSlider);
+    fxLoopReturnSlider.onValueChange = [this]
+    {
+        controller.sendMidiCc (kFxLoopReturnCc, static_cast<uint8_t> (static_cast<int> (fxLoopReturnSlider.getValue())));
+    };
+
+    setupGlobalsKnob (fxLoopMixSlider);
+    fxLoopMixSlider.onValueChange = [this]
+    {
+        controller.sendMidiCc (kFxLoopMixCc, static_cast<uint8_t> (static_cast<int> (fxLoopMixSlider.getValue())));
+    };
 
     rigEntries.resize ((size_t) (RackController::kNumBanks * RackController::kRigsPerBank));
     rigStatusLabel.setText ("Click Refresh Rig List to fetch real rig names.", juce::dontSendNotification);
@@ -562,12 +665,15 @@ void SignalChainComponent::paint (juce::Graphics& g)
     // Panel the chain sits inside, filled with the "surface" colour real ComboBoxes/dropdowns use -
     // each block then fills its OWN background with the base window colour so it visually sits on
     // top of this panel instead of blending into it. See
-    // docs/mockups/signal-chain-editor-concept-notes.md "Chain row panel".
+    // docs/mockups/signal-chain-editor-concept-notes.md "Chain row panel". The Rig globals row gets
+    // the exact same treatment, for the same reason and the same visual consistency.
     auto panelBounds = chainViewport.getBounds();
     g.setColour (findColour (juce::ComboBox::backgroundColourId));
     g.fillRect (panelBounds);
+    g.fillRect (globalsPanelBounds);
     g.setColour (findColour (juce::ComboBox::outlineColourId));
     g.drawRect (panelBounds, 1);
+    g.drawRect (globalsPanelBounds, 1);
 }
 
 void SignalChainComponent::resized()
@@ -582,6 +688,72 @@ void SignalChainComponent::resized()
     presetRow.removeFromLeft (8);
     refreshRigListButton.setBounds (presetRow.removeFromLeft (140).reduced (2));
     rigStatusLabel.setBounds (presetRow.reduced (2));
+
+    area.removeFromTop (10);
+    globalsLabel.setBounds (area.removeFromTop (18));
+    area.removeFromTop (4);
+
+    // "Rig globals" row - four groups side by side (Main Volume/Tuner/Tap Tempo/FX Loop), matching
+    // docs/mockups/signal-chain-editor-concept.html's ".globals-panel" horizontal layout, inside its
+    // own bordered/filled panel (same treatment as the chain panel below - see paint()). Tuner/Tap
+    // Tempo stay fixed-width (buttons don't benefit from extra width); Main Volume's slider and FX
+    // Loop's 3 mini knobs are sliders, so they DO stretch to use whatever width is left over on a
+    // wide window instead of leaving it blank - unlike the chain's own blocks, which stay fixed-width
+    // by deliberate earlier decision (see signal-chain-editor-concept-notes.md "Chain slots use a
+    // fixed width").
+    constexpr int globalsRowHeight = 92;
+    constexpr int globalsPanelPadding = 10; // matches kChainPanelPadding's role for the chain panel
+    globalsPanelBounds = area.removeFromTop (globalsRowHeight + 2 * globalsPanelPadding);
+    auto globalsRow = globalsPanelBounds.reduced (globalsPanelPadding);
+    int gy = globalsRow.getY();
+
+    constexpr int colGap = 20;
+    constexpr int tunerColWidth = 170;
+    constexpr int tapColWidth = 80;
+
+    // Whatever's left after the two fixed-width columns and gaps, split between Main Volume and FX
+    // Loop - clamped so neither an overly-narrow nor an absurdly-wide window looks broken.
+    int flexibleWidth = globalsRow.getWidth() - tunerColWidth - tapColWidth - 3 * colGap;
+    int volumeColWidth = juce::jlimit (170, 480, (int) (flexibleWidth * 0.35));
+    int fxColWidth = juce::jmax (240, flexibleWidth - volumeColWidth);
+
+    auto volumeCol = globalsRow.removeFromLeft (volumeColWidth);
+    volumeLabel.setBounds (volumeCol.getX(), gy, volumeCol.getWidth(), 18);
+    volumeSlider.setBounds (volumeCol.getX(), gy + 22, volumeCol.getWidth(), 26);
+    globalsRow.removeFromLeft (colGap);
+
+    auto tunerCol = globalsRow.removeFromLeft (tunerColWidth);
+    tunerLabel.setBounds (tunerCol.getX(), gy, tunerCol.getWidth(), 18);
+    tunerOnButton.setBounds (tunerCol.getX(), gy + 22, 80, 26);
+    tunerOffButton.setBounds (tunerCol.getX() + 86, gy + 22, 80, 26);
+    tunerStatusLabel.setBounds (tunerCol.getX(), gy + 52, tunerCol.getWidth(), 32);
+    globalsRow.removeFromLeft (colGap);
+
+    auto tapCol = globalsRow.removeFromLeft (tapColWidth);
+    tapTempoLabel.setBounds (tapCol.getX(), gy, tapCol.getWidth(), 18);
+    tapTempoButton.setBounds (tapCol.getX(), gy + 22, 70, 26);
+    globalsRow.removeFromLeft (colGap);
+
+    auto fxCol = globalsRow.removeFromLeft (fxColWidth);
+    fxLoopLabel.setBounds (fxCol.getX(), gy, fxCol.getWidth(), 18);
+    fxLoopBypassToggle.setBounds (fxCol.getX(), gy + 22, 90, 22);
+
+    constexpr int knobGap = 12;
+    int knobWidth = (fxCol.getWidth() - 2 * knobGap) / 3;
+    int kx = fxCol.getX();
+    int knobsLabelY = gy + 50;
+    for (auto* knobLabel : { &fxLoopSendLabel, &fxLoopReturnLabel, &fxLoopMixLabel })
+    {
+        knobLabel->setBounds (kx, knobsLabelY, knobWidth, 14);
+        kx += knobWidth + knobGap;
+    }
+    kx = fxCol.getX();
+    int knobsSliderY = knobsLabelY + 16;
+    for (auto* knobSlider : { &fxLoopSendSlider, &fxLoopReturnSlider, &fxLoopMixSlider })
+    {
+        knobSlider->setBounds (kx, knobsSliderY, knobWidth, 24);
+        kx += knobWidth + knobGap;
+    }
 
     area.removeFromTop (10);
     chainLabel.setBounds (area.removeFromTop (18));
@@ -962,6 +1134,29 @@ void SignalChainComponent::updateBlockDataFromRig (const Rack::BulkRigParser::Pa
                 block.subLabel = def ? juce::String (def->name) : ("Unknown effectId " + juce::String (slot.effectId));
                 block.decodedEffectId = slot.effectId;
 
+                // Amp/Cab special case: the wire-level effectId is always 12 regardless of which of
+                // the 16 amp models is loaded - the model itself lives in the "sld6" param instead
+                // (confirmed 2026-07-27 to match ampModelOptions()'s own 0-15 index directly,
+                // "twenty-third round"). Resolve the real per-model synthetic ID
+                // (EffectDefinitions.cpp's 1000+index scheme - see its Amp/Cab section) from it, so
+                // the dropdown pre-selects the actual loaded model and its own real knob labels
+                // instead of always showing the generic combined "Amp/Cab" placeholder name.
+                if (static_cast<EffectClass> (slot.category) == EffectClass::ampCab)
+                {
+                    auto sld6It = slot.params.find ("sld6");
+                    if (sld6It != slot.params.end() && sld6It->second >= 0
+                        && sld6It->second < (int) Rack::EffectDefinitions::ampModelOptions().size())
+                    {
+                        int modelId = 1000 + (int) sld6It->second;
+                        auto modelDef = Rack::EffectDefinitions::lookup (modelId);
+                        if (modelDef)
+                        {
+                            block.subLabel = juce::String (modelDef->name);
+                            block.decodedEffectId = modelId;
+                        }
+                    }
+                }
+
                 auto bypassIt = slot.params.find ("bypa");
                 block.decodedBypass = bypassIt != slot.params.end() ? std::optional<bool> (bypassIt->second != 0) : std::nullopt;
 
@@ -1220,4 +1415,17 @@ void SignalChainComponent::onBulkRigReceived (const std::vector<uint8_t>& decode
 
     rigStatusLabel.setText ("Showing rig \"" + juce::String (rig->rigName) + "\".", juce::dontSendNotification);
     updateBlockDataFromRig (*rig);
+}
+
+void SignalChainComponent::onMainVolumeReceived (int volume)
+{
+    // dontSendNotification - this is us reflecting a device-confirmed value, not a user drag, so
+    // it must not re-trigger onValueChange (which would just send the same value right back).
+    volumeSlider.setValue (rawToDisplay (volume), juce::dontSendNotification);
+}
+
+void SignalChainComponent::onTunerStateReceived (bool isOn)
+{
+    tunerStatusLabel.setText (juce::String ("Tuner state (device-confirmed): ") + (isOn ? "On" : "Off"),
+                               juce::dontSendNotification);
 }
