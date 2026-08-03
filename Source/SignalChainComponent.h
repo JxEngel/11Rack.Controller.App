@@ -5,6 +5,7 @@
 #include "Rack/BulkRigParser.h"
 #include "SlotParamsPanel.h"
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <vector>
@@ -62,7 +63,9 @@ private:
         juce::String id;    // e.g. "wah" - matches the mockup's chainStructure ids
         juce::String label; // e.g. "Wah"
         bool fixed = false; // Input/Output ONLY - see the class doc comment for why Amp/Cab isn't
-        bool isIo = false;  // Input/Output specifically - not clickable at all
+        bool isIo = false;  // Input/Output specifically - not draggable (see Block::draggable), but
+                            // still clickable/selectable like any other block (e.g. Input shows its
+                            // True-Z/Input Selector editor - see `decodedTrueZValue` below)
 
         juce::String subLabel;
         int decodedEffectId = -1;
@@ -73,6 +76,14 @@ private:
         // Echo's "Hiss", or a plausible name-similarity match, e.g. Multi Chorus's "TriS") - see
         // docs/protocol-spec.md. Empty for effects/slots with no recorded toggle mapping yet.
         std::map<juce::String, bool> decodedToggleStates;
+
+        // "input" only: True-Z/Input Selector's raw decoded values (rig.rigGlobals' "PIGI"/"WorB"),
+        // populated by updateBlockDataFromRig(). nullopt before any decode has arrived. These drive
+        // showInputEditor()'s dropdowns' initial selection - unlike every other mapped block, there's
+        // no known MIDI CC for either field (see docs/master-control-map.md §5), so the dropdowns are
+        // local-only (see pendingInputSelectorValue/pendingTrueZValue below), not synced live.
+        std::optional<int32_t> decodedInputSelectorValue;
+        std::optional<int32_t> decodedTrueZValue;
 
         // Same idea, for knob-kind params - value already converted to the 0-127 CC scale via
         // SlotConfig.h's knobRawToCcValue() (Q31-style raw value, hardware-confirmed for Wah's Filt,
@@ -181,6 +192,12 @@ private:
     void showRenamePopup();
     void showSaveConfirmPopup();
 
+    // Shows inputEditorPanel populated from `block` (only ever called for the "input" block) -
+    // pre-selects pending.../decoded...Value, wires each combo's onChange to update the pending
+    // value. See the class doc comment and pendingInputSelectorValue/pendingTrueZValue below for why
+    // this is local-only, not a live control.
+    void showInputEditor (const ChainBlock& block);
+
     // Reorders `chain` in response to a completed drag (see ChainDropArea::itemDropped()) - a pure
     // in-memory rearrangement, no RackController call at all (this feature is local/UI-only - see
     // the class doc comment). `draggedId` is always an ordinary block's id, never Input/Output/Amp/
@@ -255,6 +272,26 @@ private:
 
     SlotParamsPanel paramsPanel;
     juce::Label noSlotLabel;
+
+    // The "input" block's editor - a third mutually-exclusive view alongside paramsPanel/noSlotLabel
+    // in selectBlock()/resized(), since Input needs interactive controls but doesn't fit
+    // SlotParamsPanel's CC-send-oriented design (see showInputEditor() and the class doc comment).
+    juce::Component inputEditorPanel;
+    juce::Label inputSelectorLabel { {}, "Input Selector" };
+    juce::ComboBox inputSelectorCombo;
+    juce::Label trueZLabel { {}, "True-Z" };
+    juce::ComboBox trueZCombo;
+    juce::Label inputEditorNoteLabel;
+
+    // The user's in-UI edit for Input's dropdowns (raw Rig Params values, e.g. PIGI's `1` for "1
+    // MOhm + Cap") - nullopt means "no local edit yet, show the decoded value." Reset to nullopt in
+    // updateBlockDataFromRig() on every fresh decode (a pending edit belongs to whichever rig was
+    // loaded when it was made, not whatever rig gets loaded next). NOT sent anywhere - no known MIDI
+    // CC exists for either field (see docs/master-control-map.md §5), and reaching the unit on a real
+    // "Save to Unit" write would need a Bulk Rig encoder that doesn't exist yet (see the class doc
+    // comment) - a separate, later decision, not attempted here.
+    std::optional<int32_t> pendingInputSelectorValue;
+    std::optional<int32_t> pendingTrueZValue;
 
     std::vector<RigEntry> rigEntries;
     int namesReceivedCount = 0;

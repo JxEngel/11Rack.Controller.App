@@ -253,6 +253,41 @@ void DiagnosticsComponent::onRigDescriptionReceived (const std::vector<uint8_t>&
                 + juce::String::toHexString (rawPayload.data(), (int) rawPayload.size()));
 }
 
+namespace
+{
+    // Friendly-formats one rig-level global for the log: "<label> (<tag>) = <value>", resolving a
+    // selector's raw value to its option name too (e.g. "True Z Selector (PIGI) = 22 kOhm + Cap
+    // [11]") instead of just the bare internal tag - the raw tag alone reads as meaningless noise
+    // unless you already know EffectDefinitions.cpp's field names by heart. Falls back to the bare
+    // tag if "Rig Params" doesn't recognize it (shouldn't happen - BulkRigParser only ever surfaces
+    // confirmed rig-level TOC keys - but defensive rather than fragile).
+    juce::String formatRigGlobal (const std::string& tag, int32_t value)
+    {
+        auto rigParams = Rack::EffectDefinitions::lookup (-1); // "Rig Params"
+        if (rigParams)
+        {
+            for (const auto& param : rigParams->params)
+            {
+                if (param.key != tag)
+                    continue;
+
+                juce::String valueText = juce::String (value);
+                if (param.kind == Rack::EffectDefinitions::ParamKind::selector)
+                    for (const auto& opt : param.options)
+                        if (opt.value == value)
+                        {
+                            valueText = juce::String (opt.name) + " [" + juce::String (value) + "]";
+                            break;
+                        }
+
+                return juce::String (param.label) + " (" + juce::String (tag) + ") = " + valueText;
+            }
+        }
+
+        return juce::String (tag) + " = " + juce::String (value);
+    }
+}
+
 void DiagnosticsComponent::onBulkRigReceived (const std::vector<uint8_t>& decodedTfxBytes)
 {
     auto rig = Rack::BulkRigParser::parseDecoded (decodedTfxBytes);
@@ -267,7 +302,7 @@ void DiagnosticsComponent::onBulkRigReceived (const std::vector<uint8_t>& decode
                 + " decoded bytes, " + juce::String ((int) rig->rigGlobals.size()) + " rig globals):");
 
     for (const auto& [tag, value] : rig->rigGlobals)
-        logMessage ("    " + juce::String (tag) + " = " + juce::String (value));
+        logMessage ("    " + formatRigGlobal (tag, value));
 
     // effectId/category turn out to match Rack::EffectDefinitions's own effectId/EffectClass
     // numbering directly (confirmed across all 10 slots of the one real sample checked so far -
@@ -302,6 +337,19 @@ void DiagnosticsComponent::onBulkRigReceived (const std::vector<uint8_t>& decode
 
 void DiagnosticsComponent::onUnhandledMessage (const std::vector<uint8_t>& rawBytes)
 {
+    // A plain 3-byte MIDI Control Change (0xB0-0xBF, channel in the low nibble) never parses as a
+    // SysEx frame, so it always lands here - this is the live "CC sniffer" for reverse-engineering
+    // which CC (if any) a given front-panel control sends, e.g. Rig Params fields like True-Z that
+    // have no CC documented anywhere (see docs/master-control-map.md §5): adjust the control on the
+    // real unit and watch this log. Still shown alongside the raw hex dump below, not instead of it,
+    // in case the actual message turns out to be something other than a CC.
+    if (rawBytes.size() == 3 && (rawBytes[0] & 0xF0) == 0xB0)
+    {
+        int channel = (rawBytes[0] & 0x0F) + 1;
+        logMessage ("Incoming MIDI CC: CC " + juce::String ((int) rawBytes[1]) + " = " + juce::String ((int) rawBytes[2])
+                    + " (channel " + juce::String (channel) + ")");
+    }
+
     logMessage ("UNHANDLED [" + juce::String ((int) rawBytes.size()) + " bytes]: "
                 + juce::String::toHexString (rawBytes.data(), (int) rawBytes.size()));
 }

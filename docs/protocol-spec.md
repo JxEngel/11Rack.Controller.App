@@ -733,7 +733,32 @@ Build-verified (both targets compile/link, 71 test groups pass, 3 new covering
 `bestEffortRawTagForKey()`'s fallback behaviour and confirming `confirmedRawTagForKey()` itself is
 unaffected by the wider table).
 
-## SysEx protocol (unofficial — from ElevenHack, not yet hardware-validated)
+**Twenty-sixth round (2026-07-28): started mapping the Signal Chain tab's "Input" block - added a
+live CC sniffer, then used it to test True-Z.** `DiagnosticsComponent::onUnhandledMessage` now
+specially recognizes a plain 3-byte MIDI Control Change and logs it as a clear "Incoming MIDI CC: CC
+n = v (channel c)" line (alongside the existing raw hex dump, so nothing is lost if it turns out to
+be something else) - a general-purpose tool for hunting undocumented CCs going forward, not specific
+to this test.
+
+Used it to test True-Z (the `PIGI` Rig Params field, already fully modeled in
+`EffectDefinitions.cpp` with all 13 options, but flagged in `master-control-map.md` §5 as having "no
+CC mapping ... sought"). Cycling through several different True-Z settings on real hardware produced
+`F0 13 0B 0F 02 03 07 01 F7` every single time - message type `02` (ASYNCSET), command `03`, params
+`[07, 01]`. This is the SAME command byte as the previously-documented "fourth round" mystery
+(`F0 13 0B 0F 02 03 07 00 F7`, seen after a rig *select*, params `[07, 00]`) - initially looked
+promising since only the last byte differed (`00` vs `01`), but since it stayed fixed at `01`
+regardless of which True-Z option was actually selected, **this async message does not encode
+True-Z's value** - it's unrelated to this particular control, whatever it actually represents (still
+unresolved - see Open Items). Genuine negative result, not a dead end for the tool itself.
+
+**Conclusion**: True-Z (and by the same reasoning, the other un-sought Rig Params fields - Input
+Selector, Exp. Pedal Selector) still have no known live MIDI CC. `SignalChainComponent`'s "Input"
+block now shows True-Z + Input Selector read-only, decoded straight from the Bulk Rig payload's
+`rigGlobals` (`PIGI`/`WorB`) via a small new `rigParamOptionName()` helper - consistent with the
+"never guess" approach used everywhere else: no live-editable control is shown, since none can
+actually be wired up yet. Removed the long-standing restriction that Input/Output blocks couldn't be
+clicked/selected at all, since Input now has real content worth showing when selected (Output still
+falls through to the generic "not yet mapped" message, same as Amp/Cab/Volume/FX Loop).
 
 See [project-overview.md](project-overview.md) "Prior Art Found" section for the full writeup.
 Summary retained here for quick reference:
@@ -772,7 +797,10 @@ Summary retained here for quick reference:
       round above)
 - [ ] Determine what the unhandled `ASYNCSET` command `0x03` (`CMD_SAVE_RIG`'s command byte, but in
       an async context) actually represents — arrives alongside `CMD_CURR_RIG_NUM` after a rig
-      select; ElevenHack doesn't handle this case either
+      select; ElevenHack doesn't handle this case either. **Partial negative result (2026-07-28,
+      "twenty-sixth round")**: it does NOT track True-Z's value - cycling through several True-Z
+      settings produced the identical `[07, 01]` params every time. Whatever `0x03` really means,
+      it isn't "a Rig Params field changed."
 - [x] Check whether other single-value parameters (beyond Main Volume) were also ported with the
       same unsigned-instead-of-signed mistake `encodeValue` had — **resolved (2026-07-24)**:
       audited every caller of ElevenHack's `ParseUtils.byteToEncodedInt`/`SysEx.buildSetEncoded01`

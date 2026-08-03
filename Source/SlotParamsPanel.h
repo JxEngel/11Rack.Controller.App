@@ -31,6 +31,13 @@
 //     converted via `knobRawToCcValue()`'s hardware-derived Q31 formula (confirmed 2026-07-28 via a
 //     full-range sweep of Wah's Filt knob - see docs/protocol-spec.md "Round 2"). Selectors have no
 //     confirmed encoding yet.
+//
+// A param can also have NO live CC at all (e.g. Volume Pedal's Min Volume/Linear-Log - confirmed
+// exact raw tags, but no documented CC anywhere, even after a real hardware CC scan - see
+// docs/master-control-map.md §5) yet still have a confirmed decoded value. `rebuildForSelectedEffect()`
+// shows these too, beyond `SlotConfig::settingCc`'s range, labelled "(not synced)" - the control is
+// still interactive (so it CAN feed a future "Save to Unit" write once one exists), but has no
+// `onValueChange`/`onClick` handler, so nothing is ever sent to the unit.
 class SlotParamsPanel : public juce::Component
 {
 public:

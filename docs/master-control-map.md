@@ -308,12 +308,21 @@ no corresponding UI slot yet:
 
 - **Volume Pedal** (IDs 38, 72): Bypass, Position (knob), Min Volume (knob), Linear/Log (toggle).
   CCs for Bypass (75) and Position (7) are known (§2); Min Volume/Linear-Log have no documented CC.
+  **Wired into a real `SlotConfig` (2026-07-28)**: the Signal Chain tab's "Volume" block now opens
+  the same live-CC editor as every other mapped slot, sending Bypass (CC 75) and Position (CC 7) -
+  Min Volume/Linear-Log stay omitted rather than guessed, same treatment as Wah's second knob.
 - **Amp/Cab** (ID 12): Bypass (CC 111, §2) + a 16-option Amp type selector - see §4 for why the
   real tone knobs (CC 13/14/15/16/21/10/112/3/84/24/23/22/44/45) aren't wired up.
 - **Rig Params** (ID -1, rig-level globals): Volume, Mono/Stereo, Tempo, 4× Fxc slots, GlSF, Msyc,
   RslL, Vol1, Vol2, Input Selector (9 options), a constant field, True Z Selector (13 options),
-  Exp. Pedal Selector (5 options). These are SysEx bulk-rig fields, not live MIDI CC parameters -
-  no CC mapping has been sought for any of them.
+  Exp. Pedal Selector (5 options). These are SysEx bulk-rig fields, not live MIDI CC parameters - no
+  CC mapping has been sought for most of them. **True-Z specifically WAS sought (2026-07-28) and
+  ruled out**: cycling through several settings on real hardware via the new CC-sniffer in
+  `DiagnosticsComponent` produced no varying signal at all (just an unrelated, unchanging async
+  message - see protocol-spec.md "twenty-sixth round"). Input Selector/True-Z are shown as
+  locally-editable dropdowns on the Signal Chain tab's "Input" block (pre-filled from the Bulk Rig
+  decode) - not synced live, since no CC exists; the first block mapped with an editable UI but no
+  live-write path at all.
 
 ---
 

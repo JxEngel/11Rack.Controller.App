@@ -55,7 +55,12 @@ You do **not** need to install JUCE yourself — the build pulls it automaticall
     validated write (Select Rig), a raw-send button for generic diagnostics (Universal SysEx
     Identity Request), a MIDI CC test tool, an Effect Index spinner + Request Effect Description
     button, and a log of decoded, human-readable info for anything `RackController` recognizes
-    ("Effect Count: 65") — raw hex only for messages it doesn't recognize yet.
+    ("Effect Count: 65") — raw hex only for messages it doesn't recognize yet. Also doubles as a
+    live **CC sniffer** (2026-07-28): any incoming plain 3-byte MIDI Control Change gets a clear
+    "Incoming MIDI CC: CC n = v (channel c)" line (alongside the raw hex, in case it's actually
+    something else) - the way to hunt for undocumented CCs, e.g. Rig Params fields like True-Z that
+    have no CC in the manual (see `master-control-map.md` §5): adjust the control on the real unit
+    and watch this log for what (if anything) comes back.
   - **Rig Browser** — the first real piece of the actual editor UI (Milestone 5): click "Refresh
     Rig List" to fetch all 208 rig names from the device (one at a time — takes a little while),
     see them listed with their "A1"–"Z4" location labels, and double-click one to load it.

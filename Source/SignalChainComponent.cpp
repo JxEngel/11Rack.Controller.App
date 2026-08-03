@@ -65,9 +65,9 @@ namespace
         }
     }
 
-    // Which SlotConfig (see SlotConfig.cpp) a chain block should open in the editor panel - only
-    // the 7 slots EffectEditorComponent already covers. Volume/Amp/Cab/FX Loop have no SlotConfig
-    // yet (same real gap EffectEditorComponent has today) - clicking those shows the fallback label.
+    // Which SlotConfig (see SlotConfig.cpp) a chain block should open in the editor panel. Amp/Cab/
+    // FX Loop still have no SlotConfig (no confirmed CC data to build one from yet) - clicking those
+    // shows the fallback label.
     juce::String slotConfigNameForBlockId (const juce::String& id)
     {
         if (id == "disto") return "Distortion";
@@ -77,6 +77,29 @@ namespace
         if (id == "reverb") return "Reverb";
         if (id == "fx1") return "FX1";
         if (id == "fx2") return "FX2";
+        if (id == "vol") return "Volume Pedal";
+        return {};
+    }
+
+    // Resolves a Rig Params selector's raw value to its option name (e.g. "PIGI" 11 -> "22 kOhm +
+    // Cap") - used for Input's read-only True-Z/Input Selector display. Returns an empty string if
+    // the key or value isn't found, rather than guessing.
+    juce::String rigParamOptionName (const char* paramKey, int rawValue)
+    {
+        auto def = Rack::EffectDefinitions::lookup (-1); // "Rig Params"
+        if (! def)
+            return {};
+
+        for (const auto& param : def->params)
+        {
+            if (param.key != paramKey)
+                continue;
+
+            for (const auto& opt : param.options)
+                if (opt.value == rawValue)
+                    return juce::String (opt.name);
+        }
+
         return {};
     }
 
@@ -304,8 +327,10 @@ void SignalChainComponent::Block::mouseDrag (const juce::MouseEvent& e)
 
 void SignalChainComponent::Block::mouseUp (const juce::MouseEvent& e)
 {
-    // A completed drag shouldn't also re-select the source block as a click.
-    if (! isIo && ! e.mouseWasDraggedSinceMouseDown() && onClick)
+    // A completed drag shouldn't also re-select the source block as a click. Every block is
+    // selectable, even Input/Output (no SlotConfig, but Input has a real editor to show - see
+    // showInputEditor()) - selectBlock() decides what to actually display.
+    if (! e.mouseWasDraggedSinceMouseDown() && onClick)
         onClick();
 }
 
@@ -427,6 +452,12 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
     addAndMakeVisible (chainViewport);
     addAndMakeVisible (paramsPanel);
     addAndMakeVisible (noSlotLabel);
+    addAndMakeVisible (inputEditorPanel);
+    inputEditorPanel.addAndMakeVisible (inputSelectorLabel);
+    inputEditorPanel.addAndMakeVisible (inputSelectorCombo);
+    inputEditorPanel.addAndMakeVisible (trueZLabel);
+    inputEditorPanel.addAndMakeVisible (trueZCombo);
+    inputEditorPanel.addAndMakeVisible (inputEditorNoteLabel);
 
     chainViewport.setViewedComponent (&chainContent, false);
     chainViewport.setScrollBarsShown (false, true);
@@ -453,6 +484,32 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
 
     noSlotLabel.setText ("No editable parameters mapped for this block yet.", juce::dontSendNotification);
     noSlotLabel.setJustificationType (juce::Justification::centred);
+
+    // Local-only edits (see pendingInputSelectorValue/pendingTrueZValue's doc comment in the header
+    // for why - no known MIDI CC exists for either field, and reaching the unit on a real save needs
+    // a Bulk Rig encoder that doesn't exist yet). Item IDs are the option's raw value + 1 (same
+    // convention SlotParamsPanel.cpp uses for its selectors), so a 0-valued option stays selectable.
+    inputSelectorCombo.onChange = [this]
+    {
+        auto id = inputSelectorCombo.getSelectedId();
+        if (id > 0)
+            pendingInputSelectorValue = id - 1;
+    };
+    trueZCombo.onChange = [this]
+    {
+        auto id = trueZCombo.getSelectedId();
+        if (id > 0)
+            pendingTrueZValue = id - 1;
+    };
+
+    inputEditorNoteLabel.setText (
+        "Not synced live with the unit - no known MIDI CC exists for these fields (see "
+        "docs/master-control-map.md " + juce::String (juce::CharPointer_UTF8 ("\xc2\xa7")) + "5). Your "
+        "selection here is local only for now; wiring it into a real \"Save to Unit\" write needs a "
+        "Bulk Rig encoder that doesn't exist yet. Selecting a different preset resets these back to "
+        "whatever's actually decoded from the unit.",
+        juce::dontSendNotification);
+    inputEditorNoteLabel.setJustificationType (juce::Justification::topLeft);
 
     chain = buildDefaultChain();
     rebuildChainUi();
@@ -542,6 +599,21 @@ void SignalChainComponent::resized()
     area.removeFromTop (12);
     paramsPanel.setBounds (area);
     noSlotLabel.setBounds (area);
+
+    inputEditorPanel.setBounds (area);
+    auto inputArea = inputEditorPanel.getLocalBounds().reduced (10);
+
+    auto selectorRow = inputArea.removeFromTop (30);
+    inputSelectorLabel.setBounds (selectorRow.removeFromLeft (110).reduced (2));
+    inputSelectorCombo.setBounds (selectorRow.reduced (2));
+
+    inputArea.removeFromTop (8);
+    auto trueZRow = inputArea.removeFromTop (30);
+    trueZLabel.setBounds (trueZRow.removeFromLeft (110).reduced (2));
+    trueZCombo.setBounds (trueZRow.reduced (2));
+
+    inputArea.removeFromTop (16);
+    inputEditorNoteLabel.setBounds (inputArea);
 }
 
 void SignalChainComponent::rebuildChainUi()
@@ -705,7 +777,7 @@ void SignalChainComponent::updateChainHoverPreview (int hoveredGapIndex)
 
 void SignalChainComponent::selectBlock (int index)
 {
-    if (index < 0 || index >= (int) chain.size() || chain[(size_t) index].isIo)
+    if (index < 0 || index >= (int) chain.size())
         return;
 
     selectedIndex = index;
@@ -721,13 +793,63 @@ void SignalChainComponent::selectBlock (int index)
                              block.decodedKnobValues);
         paramsPanel.setVisible (true);
         noSlotLabel.setVisible (false);
+        inputEditorPanel.setVisible (false);
     }
-    else
+    else if (block.id == "input")
     {
         paramsPanel.clear();
         paramsPanel.setVisible (false);
-        noSlotLabel.setVisible (true);
+        noSlotLabel.setVisible (false);
+        inputEditorPanel.setVisible (true);
+        showInputEditor (block);
     }
+    else
+    {
+        // Every other non-mapped block (Output/Amp/Cab/Volume/FX Loop) - no SlotConfig, no
+        // decodable info worth a dedicated editor - falls back to the generic message.
+        paramsPanel.clear();
+        paramsPanel.setVisible (false);
+        inputEditorPanel.setVisible (false);
+        noSlotLabel.setVisible (true);
+        noSlotLabel.setJustificationType (juce::Justification::centred);
+        noSlotLabel.setText ("No editable parameters mapped for this block yet.", juce::dontSendNotification);
+    }
+}
+
+void SignalChainComponent::showInputEditor (const ChainBlock& block)
+{
+    auto rigParams = Rack::EffectDefinitions::lookup (-1); // "Rig Params"
+
+    auto populate = [&rigParams] (juce::ComboBox& combo, const char* paramKey)
+    {
+        combo.clear (juce::dontSendNotification);
+        if (! rigParams)
+            return;
+
+        for (const auto& param : rigParams->params)
+        {
+            if (param.key != paramKey)
+                continue;
+
+            for (const auto& opt : param.options)
+                combo.addItem (opt.name, opt.value + 1); // +1: item IDs must be > 0
+            break;
+        }
+    };
+
+    populate (inputSelectorCombo, "WorB");
+    populate (trueZCombo, "PIGI");
+
+    auto selectValue = [] (juce::ComboBox& combo, std::optional<int32_t> value)
+    {
+        if (value)
+            combo.setSelectedId (*value + 1, juce::dontSendNotification);
+        else
+            combo.setSelectedId (0, juce::dontSendNotification);
+    };
+
+    selectValue (inputSelectorCombo, pendingInputSelectorValue.has_value() ? pendingInputSelectorValue : block.decodedInputSelectorValue);
+    selectValue (trueZCombo, pendingTrueZValue.has_value() ? pendingTrueZValue : block.decodedTrueZValue);
 }
 
 void SignalChainComponent::handleChainReorder (const juce::String& draggedId, int insertBeforeChainIndex)
@@ -795,6 +917,31 @@ void SignalChainComponent::updateBlockDataFromRig (const Rack::BulkRigParser::Pa
     input.label = "Input";
     input.fixed = true;
     input.isIo = true;
+
+    // True-Z and Input Selector are rig-level globals (rig.rigGlobals, not tied to any lettered
+    // slot - see the class doc comment on why Input can't be decoded the same way as the other
+    // blocks) with no known live MIDI CC (confirmed 2026-07-28: cycling through every True-Z option
+    // on real hardware produced the exact same unrelated async SysEx message every time, not a
+    // value that tracked the selection - see docs/protocol-spec.md). Stored as raw values for
+    // showInputEditor()'s dropdowns; a fresh decode always wins over any pending local edit, since
+    // that edit belonged to whatever rig was loaded before - see pendingInputSelectorValue/
+    // pendingTrueZValue's doc comment in the header.
+    auto trueZIt = rig.rigGlobals.find ("PIGI");
+    auto inputSelectorIt = rig.rigGlobals.find ("WorB");
+    if (trueZIt != rig.rigGlobals.end())
+        input.decodedTrueZValue = trueZIt->second;
+    if (inputSelectorIt != rig.rigGlobals.end())
+        input.decodedInputSelectorValue = inputSelectorIt->second;
+
+    juce::String trueZName = input.decodedTrueZValue ? rigParamOptionName ("PIGI", *input.decodedTrueZValue) : juce::String();
+    juce::String inputSelectorName = input.decodedInputSelectorValue ? rigParamOptionName ("WorB", *input.decodedInputSelectorValue) : juce::String();
+    input.subLabel = inputSelectorName.isNotEmpty() && trueZName.isNotEmpty()
+                          ? inputSelectorName + ", " + trueZName
+                          : (inputSelectorName.isNotEmpty() ? inputSelectorName : trueZName);
+
+    pendingInputSelectorValue.reset();
+    pendingTrueZValue.reset();
+
     newChain.push_back (input);
 
     for (const auto& slot : rig.slots)
@@ -1027,7 +1174,10 @@ void SignalChainComponent::showSaveConfirmPopup()
         {
             // Deliberately NOT calling RackController::saveRig() - see SaveConfirmPopupContent's
             // doc comment above and RackController.h's "NOT YET HARDWARE-VALIDATED" note on that
-            // method.
+            // method. Whenever this IS wired for real: it should also consult
+            // pendingInputSelectorValue/pendingTrueZValue (falling back to the decoded values) to
+            // include Input's locally-edited settings - but that needs a Bulk Rig encoder that
+            // doesn't exist yet (see the class doc comment), a separate, later piece of work.
             rigStatusLabel.setText ("(not yet saved to unit) Would overwrite \"" + location + ": "
                                          + name + "\".",
                                      juce::dontSendNotification);

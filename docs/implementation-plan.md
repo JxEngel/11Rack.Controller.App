@@ -589,6 +589,49 @@ Nothing above is trusted until confirmed against the real unit:
       **manually re-confirmed against the real "SLO 100" rig (2026-07-27)** - the Signal Chain tab
       now shows the correct real order (Volume, Wah, FX2, Distortion, Amp, Cab, FX Loop, Mod, Delay,
       FX1, Reverb).
+- [x] **Started mapping individual Signal Chain blocks - "Input" first (2026-07-28).** Added a live
+      CC sniffer to `DiagnosticsComponent` (any incoming plain 3-byte MIDI CC now gets a clear
+      "Incoming MIDI CC: CC n = v" log line, not just raw hex) to hunt for undocumented CCs. Used it
+      to test True-Z (`PIGI`, a Rig Params field already fully modeled with all 13 options but
+      flagged as having no known CC) - cycling through several settings on real hardware produced no
+      varying signal at all, ruling out a live CC for it (see protocol-spec.md "twenty-sixth round").
+      Since Input Selector/True-Z can only be read from a Bulk Rig decode, not written live, the
+      "Input" block now shows both read-only (via a new `rigParamOptionName()` helper resolving
+      `rig.rigGlobals`' `PIGI`/`WorB` against the existing Rig Params option lists) instead of the
+      generic "not yet mapped" fallback - the first block mapped with no live-editable control at
+      all, a genuinely different case from every other slot done so far. Also removed the
+      long-standing restriction that Input/Output blocks couldn't be clicked/selected (Output still
+      falls through to the generic fallback, having nothing decodable of its own yet). Build-verified
+      (both targets compile/link, 71 test groups pass - unchanged, this is UI/decode-plumbing only).
+- [x] **Made Input Selector/True-Z locally-editable dropdowns instead of read-only text
+      (2026-07-28).** User request, explicitly scoped: no live CC exists for either field (see
+      above), so these can't sync live like every other mapped control - but the user wants them
+      editable anyway, with the selection eventually feeding into a real "Save to Unit" write once
+      that exists. Replaced `ChainBlock::infoText` with raw decoded values
+      (`decodedInputSelectorValue`/`decodedTrueZValue`) and added a small dedicated panel
+      (`inputEditorPanel`, two `ComboBox`es populated from the "Rig Params" `EffectDefinition`'s own
+      option lists) as a third mutually-exclusive view alongside `paramsPanel`/`noSlotLabel` - not
+      built as a `SlotParamsPanel` instance, since that component's whole design is CC-send-oriented
+      and nothing here can send anything. The user's picks live in
+      `pendingInputSelectorValue`/`pendingTrueZValue`, reset on every fresh Bulk Rig decode (a
+      pending edit belongs to whichever rig was loaded when it was made). **Explicitly NOT
+      attempted**: actually reaching the unit on save. That needs a Bulk Rig **encoder**
+      (`BulkRigParser` only ever decodes) plus sending it via `CMD_SET_BULK_TFX`
+      (`SysExFrame::Command::setBulkTfx`, currently only ever *decoded* as an incoming reply, never
+      sent - `RackController` has no method for it at all) - a materially larger, genuinely risky
+      undertaking (a malformed rig write has no known undo) left as a clearly separate, later
+      decision, not started here. `showSaveConfirmPopup()`'s stub gained a pointer comment to this
+      effect. Build-verified (both targets compile/link, 71 test groups pass - unchanged).
+- [x] **Wired Volume Pedal into a real `SlotConfig` (2026-07-28).** Same pattern as Wah: only
+      Position (CC 7) has a confirmed CC, so only that knob is wired; Min Volume and Linear/Log have
+      no documented CC and are intentionally omitted rather than guessed (see
+      `docs/master-control-map.md` §5). Added the `"Volume Pedal"` entry to `SlotConfig::
+      slotConfigs()` (Bypass CC 75, effect IDs 38/72 - "sibling" IDs sharing one definition, same
+      dedup handling `SlotParamsPanel` already does for these) and mapped the Signal Chain tab's
+      `"vol"` block id to it in `slotConfigNameForBlockId()` - clicking Volume now opens the same
+      live-CC editor every other mapped slot uses, instead of the generic fallback. Bypass/Position
+      are from the official manual chart, not yet hardware-tested. Build-verified (both targets
+      compile/link, 71 test groups pass - unchanged, no new tests needed for a data-only addition).
 
 ## Not yet scheduled / parked
 
@@ -654,15 +697,13 @@ Nothing above is trusted until confirmed against the real unit:
     ElevenHack's own `CMD_RIG_DESC` handler (`ElevenReceiver.java`) is a dead stub with no real
     parsing logic, so this can't be answered from their source either.
   - Not yet scoped into concrete steps - see protocol-spec.md Open Items for the same entry.
-- **Wire Volume Pedal, Amp/Cab, and FX Loop into `SlotParamsPanel`/`slotConfigs()`** so clicking those
-  blocks in the Signal Chain tab (and picking them in `EffectEditorComponent`) shows real controls
-  instead of the "No editable parameters mapped for this block yet" fallback. Volume Pedal's CC data
-  already exists (Bypass=75, Position=7 - see master-control-map.md §2) and is the smallest lift;
-  Amp doesn't fit `SlotConfig`'s "pick an effect ID from a list" shape (one effect ID with 16
-  selectable models, not several effect IDs - see the note in `EffectEditorComponent.h`) and Cab has
-  no independently-known parameters at all; FX Loop already has its own dedicated
-  `RigGlobalsComponent` controls (fixed CCs, not a "Setting N" slot) that could potentially be
-  reused/duplicated here instead of built fresh.
+- ~~Wire Volume Pedal, Amp/Cab, and FX Loop into `SlotParamsPanel`/`slotConfigs()`~~ - **Volume Pedal
+  done (2026-07-28)**, see Milestone 5 above (Bypass=75, Position=7; Min Volume/Linear-Log have no
+  documented CC, omitted). **Amp/Cab and FX Loop still parked**: Amp doesn't fit `SlotConfig`'s "pick
+  an effect ID from a list" shape (one effect ID with 16 selectable models, not several effect IDs -
+  see the note in `EffectEditorComponent.h`) and Cab has no independently-known parameters at all;
+  FX Loop already has its own dedicated `RigGlobalsComponent` controls (fixed CCs, not a "Setting N"
+  slot) that could potentially be reused/duplicated here instead of built fresh.
 - **Add chain-reordering UI to the Signal Chain tab.** The chain now shows each rig's real order
   (see the "Signal-chain editor UI" and its order-bug fix, both Milestone 5 above) but isn't
   user-editable - dragging a block around wouldn't do anything. Blocked on the same open question as

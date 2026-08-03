@@ -163,16 +163,31 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
     };
 
     size_t settingIndex = 0;
-    // params[0] is always Bypass (handled above) - start from params[1] for the "Setting N" params.
-    for (size_t i = 1; i < def->params.size() && settingIndex < currentSlot->settingCc.size(); ++i)
+    // params[0] is always Bypass (handled above) - start from params[1]. Params within
+    // currentSlot->settingCc's range get the usual live-CC treatment; params BEYOND it have no
+    // known CC at all, so they only get shown if there's an actual confirmed decoded value for them
+    // (knownToggleStates/knownKnobValues - see SlotConfig.h's confirmedRawTagForKey()/
+    // bestEffortRawTagForKey()) - local-only controls, not wired to send anything, matching
+    // SignalChainComponent's Input block treatment. No known value AND no live CC means nothing
+    // honest to show, so that param is simply skipped, same as always.
+    for (size_t i = 1; i < def->params.size(); ++i)
     {
         const auto& param = def->params[i];
-        auto cc = currentSlot->settingCc[settingIndex];
+        bool hasLiveCc = settingIndex < currentSlot->settingCc.size();
+        uint8_t cc = hasLiveCc ? currentSlot->settingCc[settingIndex] : 0;
+
+        auto knownToggleIt = knownToggleStates.find (juce::String (param.key));
+        auto knownKnobIt = knownKnobValues.find (juce::String (param.key));
+        bool hasKnownValue = knownToggleIt != knownToggleStates.end() || knownKnobIt != knownKnobValues.end();
+
+        if (! hasLiveCc && ! hasKnownValue)
+            continue;
 
         ParamControl pc;
         pc.kind = param.kind;
         pc.ccNumber = cc;
-        pc.label = std::make_unique<juce::Label> (juce::String(), param.label);
+        pc.label = std::make_unique<juce::Label> (juce::String(),
+                                                    hasLiveCc ? param.label : (param.label + " (not synced)"));
         paramsContent.addAndMakeVisible (*pc.label);
 
         if (param.kind == ParamKind::knob)
@@ -186,20 +201,24 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
             // tag for this param (and, for knobs, knobRawToCcValue()'s Q31 conversion applied to
             // it) - every other knob just keeps the neutral mid-range default, no guessing (see the
             // class doc comment above).
-            auto knownIt = knownKnobValues.find (juce::String (param.key));
-            if (knownIt != knownKnobValues.end())
-                pc.slider->setValue (knownIt->second, juce::dontSendNotification);
+            if (knownKnobIt != knownKnobValues.end())
+                pc.slider->setValue (knownKnobIt->second, juce::dontSendNotification);
             else
                 pc.slider->setValue ((param.minValue + param.maxValue) / 2.0, juce::dontSendNotification);
 
             pc.slider->setSliderStyle (juce::Slider::LinearHorizontal);
             pc.slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 50, 24);
 
-            auto* sliderPtr = pc.slider.get();
-            pc.slider->onValueChange = [this, cc, sliderPtr]
+            // Local-only (no live CC): the slider just holds whatever you drag it to - no
+            // onValueChange handler, so nothing gets sent anywhere.
+            if (hasLiveCc)
             {
-                controller.sendMidiCc (cc, static_cast<uint8_t> (static_cast<int> (sliderPtr->getValue())));
-            };
+                auto* sliderPtr = pc.slider.get();
+                pc.slider->onValueChange = [this, cc, sliderPtr]
+                {
+                    controller.sendMidiCc (cc, static_cast<uint8_t> (static_cast<int> (sliderPtr->getValue())));
+                };
+            }
         }
         else if (param.kind == ParamKind::toggle)
         {
@@ -209,16 +228,19 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
             // Only seeded when SlotConfig.h's confirmedRawTagForKey() has an actual confirmed raw
             // tag for this param - every other toggle just keeps its default (unchecked) state, no
             // guessing (see the class doc comment above).
-            auto knownIt = knownToggleStates.find (juce::String (param.key));
-            if (knownIt != knownToggleStates.end())
-                pc.toggle->setToggleState (knownIt->second, juce::dontSendNotification);
+            if (knownToggleIt != knownToggleStates.end())
+                pc.toggle->setToggleState (knownToggleIt->second, juce::dontSendNotification);
 
-            auto* togglePtr = pc.toggle.get();
-            pc.toggle->onClick = [this, cc, togglePtr]
+            // Local-only (no live CC): just toggles visually, nothing sent - see the knob branch.
+            if (hasLiveCc)
             {
-                // 0-63 = Off, 64-127 = On - the same convention as the official on/off CCs.
-                controller.sendMidiCc (cc, togglePtr->getToggleState() ? 127 : 0);
-            };
+                auto* togglePtr = pc.toggle.get();
+                pc.toggle->onClick = [this, cc, togglePtr]
+                {
+                    // 0-63 = Off, 64-127 = On - the same convention as the official on/off CCs.
+                    controller.sendMidiCc (cc, togglePtr->getToggleState() ? 127 : 0);
+                };
+            }
         }
         else // selector
         {
@@ -233,16 +255,20 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
             if (! param.options.empty())
                 pc.combo->setSelectedId (param.options.front().value + 1, juce::dontSendNotification);
 
-            auto* comboPtr = pc.combo.get();
-            pc.combo->onChange = [this, cc, comboPtr]
+            if (hasLiveCc)
             {
-                auto rawValue = comboPtr->getSelectedId() - 1;
-                controller.sendMidiCc (cc, static_cast<uint8_t> (rawValue));
-            };
+                auto* comboPtr = pc.combo.get();
+                pc.combo->onChange = [this, cc, comboPtr]
+                {
+                    auto rawValue = comboPtr->getSelectedId() - 1;
+                    controller.sendMidiCc (cc, static_cast<uint8_t> (rawValue));
+                };
+            }
         }
 
         paramControls.push_back (std::move (pc));
-        ++settingIndex;
+        if (hasLiveCc)
+            ++settingIndex;
     }
 
     resized();

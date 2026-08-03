@@ -20,6 +20,19 @@ const std::vector<SlotConfig>& slotConfigs()
             "3 knobs).",
         },
         {
+            "Volume Pedal",
+            75, // "Volume Pedal Bypass"
+            { 7 }, // "Volume Pedal Position" - the chart has no "Setting N" scheme here either
+            { 38, 72 },
+            38,
+            "Only the Position knob (CC 7) has a confirmed CC mapping - Min Volume and the "
+            "Linear/Log toggle have no known CC in the official chart and are intentionally "
+            "omitted rather than guessed (see docs/master-control-map.md's \"Known gaps\"/"
+            "\"Effects modeled but not exposed\" sections). Bypass (CC 75) and Position are "
+            "from the official manual chart, not yet hardware-tested. No live readback for "
+            "per-knob values.",
+        },
+        {
             "Wah",
             43, // "Wah On/Off"
             { 4 }, // "Wah Pedal" - the chart has no "Setting N" scheme for Wah, just this one CC
@@ -142,6 +155,9 @@ namespace
     const std::map<juce::String, std::map<juce::String, juce::String>>& confirmedTagTable()
     {
         static const std::map<juce::String, std::map<juce::String, juce::String>> table = {
+            // Confirmed 2026-07-28 via a real decode: all 4 raw tags (bypa/Vol /Min /Tapr) match
+            // their CC-side keys exactly.
+            { "Volume Pedal", { { "Vol ", "Vol " }, { "Min ", "Min " }, { "Tapr", "Tapr" } } },
             { "Sine Wah", { { "Filt", "Filt" }, { "VxCr", "VxCr" } } },
             { "Black Wah", { { "Filt", "Filt" }, { "VxCr", "VxCr" } } },
             // All 5 Distortion models share ElevenHack's one internal Distortion field set - only
