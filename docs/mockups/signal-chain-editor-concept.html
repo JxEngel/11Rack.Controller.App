@@ -140,12 +140,10 @@
   .empty { font-size: 13px; color: var(--text-muted); margin: 20px 0 0; }
 
   .bypass-row { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-size: 13px; }
-  .bypass-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); }
 
   .row { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
   .row .rlabel { width: 160px; font-size: 13px; color: var(--text); flex-shrink: 0; }
   .row select { flex: 1; }
-  .row .toggle-state { font-size: 13px; color: var(--text-secondary); }
 
   input[type=range] {
     flex: 1;
@@ -227,6 +225,31 @@
   }
   .gold-knob .knob-range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ns-resize; }
   .knob-valbox { width: 46px; text-align: center; }
+
+  /* Rocker on/off switch (matches Source/RockerSwitchLookAndFeel.cpp's hand-drawn LookAndFeel -
+     dark bezel, a paddle split into ON/OFF halves, whichever is active fills gold; no separate
+     pilot light, per the reviewed design). Used for every Bypass control and every other
+     toggle-kind param - see initRockerSwitches() below. A plain clickable <button>, not backed by
+     a hidden native checkbox the way the gold knobs sit on top of a real <input type=range> -
+     there's no keyboard-drag gesture to preserve here, just a click. */
+  .rocker-switch {
+    position: relative; width: 42px; height: 56px; flex-shrink: 0;
+    border-radius: 8px; background: #050607; padding: 4px; box-sizing: border-box;
+    border: none; cursor: pointer;
+  }
+  .rocker-switch .paddle {
+    position: relative; width: 100%; height: 100%; border-radius: 5px; background: #2c2f32;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .rocker-switch .half {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 8px; font-weight: 700; letter-spacing: .5px; color: #6b7178;
+  }
+  .rocker-switch .seam { height: 1px; background: #0b0d0e; }
+  .rocker-switch[data-on="true"] .on-half { background: linear-gradient(180deg,#f6dfa0,#d9a83f); color: #1c1f22; }
+  .rocker-switch[data-on="true"] .off-half { color: #6b7178; }
+  .rocker-switch:not([data-on="true"]) .off-half { color: #e8e8e8; }
+  .bypass-toggle-row { display: flex; align-items: center; gap: 10px; }
 </style>
 </head>
 <body>
@@ -298,9 +321,15 @@
 
     <div class="global-group">
       <span class="glabel">FX Loop</span>
-      <div class="gcontrol-row">
-        <input type="checkbox" id="fxLoopBypass" />
-        <label for="fxLoopBypass">Bypass</label>
+      <div class="bypass-toggle-row">
+        <button type="button" class="rocker-switch" id="fxLoopBypass" data-on="false" aria-pressed="false">
+          <div class="paddle">
+            <div class="half on-half">ON</div>
+            <div class="seam"></div>
+            <div class="half off-half">OFF</div>
+          </div>
+        </button>
+        <label>Bypass</label>
       </div>
       <div class="fxloop-knobs">
         <div class="knob-block">
@@ -705,6 +734,31 @@ function renderChain() {
   });
 }
 
+// Rocker on/off switch markup (see the ".rocker-switch" CSS above) - a plain clickable button, no
+// hidden native control underneath (unlike the gold knobs, there's no drag/keyboard gesture worth
+// preserving for a simple on/off click). `idAttr` lets callers pass e.g. ' id="bypassCheck"' when
+// something else needs to address a specific instance; pass '' for anonymous ones.
+function rockerSwitchHtml(idAttr) {
+  return '<button type="button" class="rocker-switch"' + idAttr + ' data-on="false" aria-pressed="false">' +
+    '<div class="paddle"><div class="half on-half">ON</div><div class="seam"></div><div class="half off-half">OFF</div></div>' +
+    '</button>';
+}
+
+// Wires click-to-toggle for every ".rocker-switch" under `root` - scoped the same way
+// initGoldKnobs() is (see its own comment): the Rig Globals FX Loop switch is wired once at page
+// load, and every per-slot editor switch is wired scoped to just #editorArea each time
+// renderEditor() rebuilds it, so switching effects never double-attaches a click handler onto an
+// already-wired element.
+function initRockerSwitches(root = document) {
+  root.querySelectorAll('.rocker-switch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      const isOn = sw.dataset.on === 'true';
+      sw.dataset.on = isOn ? 'false' : 'true';
+      sw.setAttribute('aria-pressed', isOn ? 'false' : 'true');
+    });
+  });
+}
+
 function renderEditor() {
   const el = document.getElementById('editorArea');
   const slot = slotConfigs[selected];
@@ -724,7 +778,7 @@ function renderEditor() {
   });
   html += '</select></div>';
   html += '<p class="note">' + slot.note + '</p>';
-  html += '<div class="bypass-row"><input type="checkbox" id="bypassCheck" /><label for="bypassCheck">Bypass</label></div>';
+  html += '<div class="bypass-row">' + rockerSwitchHtml(' id="bypassCheck"') + '<label>Bypass</label></div>';
 
   controls.forEach(c => {
     html += '<div class="row"><span class="rlabel">' + c.l + '</span>';
@@ -740,7 +794,10 @@ function renderEditor() {
     } else if (c.t === 'select') {
       html += '<select>' + c.options.map(o => '<option>' + o + '</option>').join('') + '</select>';
     } else if (c.t === 'toggle') {
-      html += '<span class="toggle-state">' + c.off + '</span>';
+      // Generic ON/OFF, not c.on/c.off's semantic names - matches the real app exactly: the row's
+      // own label (already shown above, e.g. "Chorus/Vibrato") carries the semantic meaning, the
+      // switch itself is a plain, un-labelled juce::ToggleButton (see RockerSwitchLookAndFeel.h).
+      html += rockerSwitchHtml('');
     }
     html += '</div>';
   });
@@ -748,6 +805,7 @@ function renderEditor() {
   el.innerHTML = html;
   document.getElementById('effectSelect').onchange = e => { /* mockup only - not wired */ };
   initGoldKnobs(el);
+  initRockerSwitches(el);
 }
 
 function renderAll() {
@@ -817,9 +875,11 @@ renderPresetSelect();
 document.getElementById('statusText').textContent = 'Click Refresh Rig List to fetch real rig names.';
 renderAll();
 // Scoped to just the Rig Globals panel - renderEditor() (called by renderAll() above) already
-// scoped its own initGoldKnobs(el) call to #editorArea, so initializing the whole document here
-// too would double-append dots onto those same editor knobs.
+// scoped its own initGoldKnobs(el)/initRockerSwitches(el) calls to #editorArea, so initializing
+// the whole document here too would double-append dots (knobs) or double-attach click handlers
+// (switches) onto those same editor controls.
 initGoldKnobs(document.querySelector('.globals-panel'));
+initRockerSwitches(document.querySelector('.globals-panel'));
 </script>
 </body>
 </html>

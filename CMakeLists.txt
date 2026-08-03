@@ -38,6 +38,7 @@ target_sources(ElevenRackController PRIVATE
     Source/SlotConfig.cpp
     Source/SlotParamsPanel.cpp
     Source/GoldKnobLookAndFeel.cpp
+    Source/RockerSwitchLookAndFeel.cpp
     Source/SignalChainComponent.cpp
     Source/Rack/SysExFrame.cpp
     Source/Rack/SevenBitCodec.cpp

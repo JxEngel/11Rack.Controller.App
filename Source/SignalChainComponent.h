@@ -3,6 +3,8 @@
 #include <JuceHeader.h>
 #include "GoldKnobLookAndFeel.h"
 #include "KnobStyle.h"
+#include "RockerSwitchLookAndFeel.h"
+#include "ToggleStyle.h"
 #include "Rack/RackController.h"
 #include "Rack/BulkRigParser.h"
 #include "SlotParamsPanel.h"
@@ -69,6 +71,10 @@ public:
     // Volume, FX Loop Send/Return/Mix), so a style change is consistent across the whole app, not
     // just the per-slot editor.
     void setKnobStyle (KnobStyle style);
+
+    // Same idea as setKnobStyle(), for the "Rig globals" row's one toggle (FX Loop Bypass) and the
+    // embedded paramsPanel's toggles.
+    void setToggleStyle (ToggleStyle style);
 
 private:
     // One entry in the chain, in order. `subLabel`/`decodedEffectId`/`decodedBypass` are filled in
@@ -204,6 +210,9 @@ private:
     // destroyed/recreated, only re-styled.
     void applyGlobalsKnobStyle (KnobStyle style);
 
+    // Same idea, for fxLoopBypassToggle - see setToggleStyle().
+    void applyGlobalsToggleStyle (ToggleStyle style);
+
     void refreshRigList();
     void presetSelected();
     void rebuildChainUi();
@@ -275,13 +284,15 @@ private:
     juce::Component::SafePointer<juce::Component> draggedBlockComponent;
     juce::String draggedBlockId; // set alongside draggedBlockComponent - used by updateChainHoverPreview()
 
-    // MUST be declared before any Component member whose slider might call setLookAndFeel() on it
-    // (i.e. before volumeSlider/fxLoopSendSlider/fxLoopReturnSlider/fxLoopMixSlider below) - C++
-    // constructs members in declaration order and destroys them in reverse, so this ordering
-    // guarantees goldKnobLookAndFeel outlives every juce::Slider that could still be pointing at
-    // it. Separate instance from SlotParamsPanel's own - two independent components, each safely
-    // owning the look-and-feel object their own sliders reference, same pattern as there.
+    // MUST be declared before any Component member whose slider/toggle might call setLookAndFeel()
+    // on it (i.e. before volumeSlider/fxLoopSendSlider/fxLoopReturnSlider/fxLoopMixSlider/
+    // fxLoopBypassToggle below) - C++ constructs members in declaration order and destroys them in
+    // reverse, so this ordering guarantees both LookAndFeel objects outlive every juce::Slider/
+    // juce::ToggleButton that could still be pointing at them. Separate instances from
+    // SlotParamsPanel's own - two independent components, each safely owning the look-and-feel
+    // objects their own controls reference, same pattern as there.
     GoldKnobLookAndFeel goldKnobLookAndFeel;
+    RockerSwitchLookAndFeel rockerSwitchLookAndFeel;
 
     juce::ComboBox presetSelector;
     juce::TextButton renameButton { juce::String (juce::CharPointer_UTF8 ("\xe2\x9c\x8e")) }; // pencil glyph

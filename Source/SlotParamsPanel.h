@@ -3,6 +3,8 @@
 #include <JuceHeader.h>
 #include "GoldKnobLookAndFeel.h"
 #include "KnobStyle.h"
+#include "RockerSwitchLookAndFeel.h"
+#include "ToggleStyle.h"
 #include "Rack/RackController.h"
 #include "Rack/EffectDefinitions.h"
 #include "SlotConfig.h"
@@ -46,7 +48,9 @@
 //
 // Knob display style (2026-08-03, see KnobStyle.h) is set from outside via setKnobStyle() -
 // DisplayOptionsComponent's "Display Options" tab owns the actual picker UI; this panel just
-// applies whatever style it's told to every knob-kind control, current and future.
+// applies whatever style it's told to every knob-kind control, current and future. Toggle display
+// style (see ToggleStyle.h) works identically via setToggleStyle(), applied to bypassToggle and
+// every toggle-kind param control.
 class SlotParamsPanel : public juce::Component
 {
 public:
@@ -58,6 +62,10 @@ public:
     // Applied to every knob-kind control, current and future - see rebuildPreservingCurrentValues()
     // for why switching styles doesn't discard whatever values are already showing.
     void setKnobStyle (KnobStyle style);
+
+    // Same idea as setKnobStyle(), for every toggle-kind control (bypassToggle + toggle-kind
+    // ParamControls) - see RockerSwitchLookAndFeel.h.
+    void setToggleStyle (ToggleStyle style);
 
     // Shows `slot`'s effect-selector + bypass + param controls. If `preferredEffectId` is present
     // in `slot.effectIds`, it's pre-selected instead of `slot.defaultEffectId` - use this when a
@@ -95,6 +103,10 @@ private:
     // gets wired in, see the class doc comment.
     void applyKnobStyle (juce::Slider& slider);
 
+    // Same idea, for currentToggleStyle - applied to bypassToggle and every toggle-kind control's
+    // juce::ToggleButton.
+    void applyToggleStyle (juce::ToggleButton& toggle);
+
     // Holds exactly one of slider/toggle/combo, matching `kind` - a plain tagged union would be
     // more compact, but this is clearer for a handful of controls that all need addAndMakeVisible.
     struct ParamControl
@@ -108,12 +120,15 @@ private:
         uint8_t ccNumber = 0;
     };
 
-    // MUST be declared before any Component member whose slider might call setLookAndFeel() on it
-    // (i.e. before paramControls below) - C++ constructs members in declaration order and destroys
-    // them in reverse, so this ordering guarantees goldKnobLookAndFeel outlives every juce::Slider
-    // that could still be pointing at it, avoiding a dangling-pointer-on-teardown bug.
+    // MUST be declared before any Component member whose slider/toggle might call setLookAndFeel()
+    // on it (i.e. before bypassToggle/paramControls below) - C++ constructs members in declaration
+    // order and destroys them in reverse, so this ordering guarantees both LookAndFeel objects
+    // outlive every juce::Slider/juce::ToggleButton that could still be pointing at them, avoiding
+    // a dangling-pointer-on-teardown bug.
     GoldKnobLookAndFeel goldKnobLookAndFeel;
+    RockerSwitchLookAndFeel rockerSwitchLookAndFeel;
     KnobStyle currentKnobStyle = KnobStyle::goldMetallic;
+    ToggleStyle currentToggleStyle = ToggleStyle::rockerSwitch;
 
     juce::Label effectChooserLabel { {}, "Effect" };
     juce::ComboBox effectSelector;

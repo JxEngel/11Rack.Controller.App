@@ -33,6 +33,10 @@ MainComponent::MainComponent()
     {
         signalChainComponent.setKnobStyle (style);
     };
+    displayOptionsComponent.onToggleStyleChanged = [this] (ToggleStyle style)
+    {
+        signalChainComponent.setToggleStyle (style);
+    };
 
     connectToRack();
 

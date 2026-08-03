@@ -570,6 +570,7 @@ SignalChainComponent::SignalChainComponent (Rack::RackController& controllerToUs
     };
 
     applyGlobalsKnobStyle (KnobStyle::goldMetallic);
+    applyGlobalsToggleStyle (ToggleStyle::rockerSwitch);
 
     rigEntries.resize ((size_t) (RackController::kNumBanks * RackController::kRigsPerBank));
     rigStatusLabel.setText ("Click Refresh Rig List to fetch real rig names.", juce::dontSendNotification);
@@ -638,6 +639,12 @@ void SignalChainComponent::setKnobStyle (KnobStyle style)
     applyGlobalsKnobStyle (style);
 }
 
+void SignalChainComponent::setToggleStyle (ToggleStyle style)
+{
+    paramsPanel.setToggleStyle (style);
+    applyGlobalsToggleStyle (style);
+}
+
 void SignalChainComponent::applyGlobalsKnobStyle (KnobStyle style)
 {
     // A switch (not if/else) so adding a new enumerator without a matching case here warns at
@@ -652,6 +659,18 @@ void SignalChainComponent::applyGlobalsKnobStyle (KnobStyle style)
                 slider->setLookAndFeel (&goldKnobLookAndFeel);
                 break;
         }
+    }
+}
+
+void SignalChainComponent::applyGlobalsToggleStyle (ToggleStyle style)
+{
+    // A switch (not if/else) so adding a new enumerator without a matching case here warns at
+    // compile time instead of silently doing nothing - see ToggleStyle.h.
+    switch (style)
+    {
+        case ToggleStyle::rockerSwitch:
+            fxLoopBypassToggle.setLookAndFeel (&rockerSwitchLookAndFeel);
+            break;
     }
 }
 
@@ -727,7 +746,7 @@ void SignalChainComponent::resized()
     // fixed width"). Each knob's own rendered diameter is still capped by its row's fixed HEIGHT
     // (GoldKnobLookAndFeel draws at min(width,height) - see its doc comment), so extra column width
     // just centers the dial rather than distorting it.
-    constexpr int globalsRowHeight = 166; // tall enough for a rotary knob + its value box, not just a flat slider strip
+    constexpr int globalsRowHeight = 190; // tall enough for a rotary knob + its value box, and a legible rocker switch below FX Loop's label
     constexpr int globalsPanelPadding = 10; // matches kChainPanelPadding's role for the chain panel
     globalsPanelBounds = area.removeFromTop (globalsRowHeight + 2 * globalsPanelPadding);
     auto globalsRow = globalsPanelBounds.reduced (globalsPanelPadding);
@@ -762,12 +781,12 @@ void SignalChainComponent::resized()
 
     auto fxCol = globalsRow.removeFromLeft (fxColWidth);
     fxLoopLabel.setBounds (fxCol.getX(), gy, fxCol.getWidth(), 18);
-    fxLoopBypassToggle.setBounds (fxCol.getX(), gy + 22, 90, 22);
+    fxLoopBypassToggle.setBounds (fxCol.getX(), gy + 22, 120, 46);
 
     constexpr int knobGap = 12;
     int knobWidth = (fxCol.getWidth() - 2 * knobGap) / 3;
     int kx = fxCol.getX();
-    int knobsLabelY = gy + 50;
+    int knobsLabelY = gy + 74;
     for (auto* knobLabel : { &fxLoopSendLabel, &fxLoopReturnLabel, &fxLoopMixLabel })
     {
         knobLabel->setBounds (kx, knobsLabelY, knobWidth, 14);

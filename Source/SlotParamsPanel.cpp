@@ -24,6 +24,15 @@ void SlotParamsPanel::setKnobStyle (KnobStyle style)
     rebuildPreservingCurrentValues();
 }
 
+void SlotParamsPanel::setToggleStyle (ToggleStyle style)
+{
+    if (style == currentToggleStyle)
+        return;
+
+    currentToggleStyle = style;
+    rebuildPreservingCurrentValues();
+}
+
 SlotParamsPanel::~SlotParamsPanel() = default;
 
 void SlotParamsPanel::resized()
@@ -44,18 +53,25 @@ void SlotParamsPanel::resized()
     // has more rows than the visible area holds (e.g. Para EQ's 14 real params).
     paramsViewport.setBounds (area);
 
-    // Rotary sliders (the gold knob look, see goldKnobLookAndFeel's doc comment) need a much
-    // taller row than the flat linear sliders every other row uses - 90px was picked by eye to fit
-    // a rotary dial plus its below-knob text box comfortably, not derived from anything.
+    // Rotary sliders (the gold knob look, see goldKnobLookAndFeel's doc comment) and rocker
+    // switches (see rockerSwitchLookAndFeel's doc comment) both need more room than the flat
+    // linear sliders/plain comboboxes every other row uses - 90/46px were picked by eye to fit a
+    // rotary dial or a legible switch (with its ON/OFF labels) comfortably, not derived from
+    // anything.
     constexpr int spacing = 6;
     constexpr int flatRowHeight = 30;
     constexpr int rotaryRowHeight = 90;
-    auto rowHeightFor = [flatRowHeight, rotaryRowHeight] (const ParamControl& pc)
+    constexpr int toggleRowHeight = 46;
+    auto rowHeightFor = [flatRowHeight, rotaryRowHeight, toggleRowHeight] (const ParamControl& pc)
     {
-        return (pc.slider != nullptr && pc.slider->isRotary()) ? rotaryRowHeight : flatRowHeight;
+        if (pc.slider != nullptr && pc.slider->isRotary())
+            return rotaryRowHeight;
+        if (pc.toggle != nullptr)
+            return toggleRowHeight;
+        return flatRowHeight;
     };
 
-    int contentHeight = bypassToggle != nullptr ? (flatRowHeight + spacing) : 0;
+    int contentHeight = bypassToggle != nullptr ? (toggleRowHeight + spacing) : 0;
     for (auto& pc : paramControls)
         contentHeight += rowHeightFor (pc) + spacing;
 
@@ -66,7 +82,7 @@ void SlotParamsPanel::resized()
 
     if (bypassToggle != nullptr)
     {
-        auto row = contentArea.removeFromTop (flatRowHeight);
+        auto row = contentArea.removeFromTop (toggleRowHeight);
         bypassToggle->setBounds (row.reduced (2));
         contentArea.removeFromTop (spacing);
     }
@@ -191,6 +207,19 @@ void SlotParamsPanel::applyKnobStyle (juce::Slider& slider)
     }
 }
 
+void SlotParamsPanel::applyToggleStyle (juce::ToggleButton& toggle)
+{
+    // Every toggle-kind control always renders as an actual switch - see ToggleStyle.h for why
+    // there's no plain-checkbox fallback. A switch (not if/else) so adding a new enumerator
+    // without a matching case here warns at compile time instead of silently doing nothing.
+    switch (currentToggleStyle)
+    {
+        case ToggleStyle::rockerSwitch:
+            toggle.setLookAndFeel (&rockerSwitchLookAndFeel);
+            break;
+    }
+}
+
 void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
                                                  const std::map<juce::String, bool>& knownToggleStates,
                                                  const std::map<juce::String, int>& knownKnobValues)
@@ -209,6 +238,7 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
     currentBypassCc = currentSlot->bypassCc;
     bypassToggle = std::make_unique<juce::ToggleButton> ("Bypass");
     paramsContent.addAndMakeVisible (*bypassToggle);
+    applyToggleStyle (*bypassToggle);
     if (knownBypass)
         bypassToggle->setToggleState (*knownBypass, juce::dontSendNotification);
     bypassToggle->onClick = [this]
@@ -280,6 +310,7 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
         {
             pc.toggle = std::make_unique<juce::ToggleButton>();
             paramsContent.addAndMakeVisible (*pc.toggle);
+            applyToggleStyle (*pc.toggle);
 
             // Only seeded when SlotConfig.h's confirmedRawTagForKey() has an actual confirmed raw
             // tag for this param - every other toggle just keeps its default (unchecked) state, no
