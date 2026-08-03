@@ -6,6 +6,7 @@
 #include "RockerSwitchLookAndFeel.h"
 #include "TapTempoButton.h"
 #include "ToggleStyle.h"
+#include "TwoOptionSwitchStyle.h"
 #include "Rack/RackController.h"
 #include "Rack/BulkRigParser.h"
 #include "SlotParamsPanel.h"
@@ -76,6 +77,12 @@ public:
     // Same idea as setKnobStyle(), for the "Rig globals" row's one toggle (FX Loop Bypass) and the
     // embedded paramsPanel's toggles.
     void setToggleStyle (ToggleStyle style);
+
+    // Forwarded straight to the embedded paramsPanel - this component's own "Rig globals" row has
+    // no two-named-option controls (Tuner/FX Loop Bypass are both true on/off), only per-effect
+    // slots do (e.g. Chorus/Vibrato's Mode), so there's no separate applyGlobals... step here
+    // unlike setKnobStyle()/setToggleStyle(). See TwoOptionSwitchStyle.h.
+    void setTwoOptionSwitchStyle (TwoOptionSwitchStyle style);
 
 private:
     // One entry in the chain, in order. `subLabel`/`decodedEffectId`/`decodedBypass` are filled in

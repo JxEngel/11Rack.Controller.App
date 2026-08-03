@@ -1,4 +1,5 @@
 #include "SlotParamsPanel.h"
+#include "TwoOptionSwitchLabels.h"
 
 using Rack::EffectDefinitions::ParamKind;
 
@@ -30,6 +31,15 @@ void SlotParamsPanel::setToggleStyle (ToggleStyle style)
         return;
 
     currentToggleStyle = style;
+    rebuildPreservingCurrentValues();
+}
+
+void SlotParamsPanel::setTwoOptionSwitchStyle (TwoOptionSwitchStyle style)
+{
+    if (style == currentTwoOptionSwitchStyle)
+        return;
+
+    currentTwoOptionSwitchStyle = style;
     rebuildPreservingCurrentValues();
 }
 
@@ -268,6 +278,24 @@ void SlotParamsPanel::applyToggleStyle (juce::ToggleButton& toggle)
     }
 }
 
+void SlotParamsPanel::applyTwoOptionSwitchStyle (juce::ToggleButton& toggle)
+{
+    // A switch (not if/else) so adding a new enumerator without a matching case here warns at
+    // compile time instead of silently doing nothing - see TwoOptionSwitchStyle.h.
+    switch (currentTwoOptionSwitchStyle)
+    {
+        case TwoOptionSwitchStyle::segmentedSplit:
+            toggle.setLookAndFeel (&segmentedSwitchLookAndFeel);
+            break;
+        case TwoOptionSwitchStyle::slidingTrack:
+            toggle.setLookAndFeel (&slidingTrackSwitchLookAndFeel);
+            break;
+        case TwoOptionSwitchStyle::leverDot:
+            toggle.setLookAndFeel (&leverDotSwitchLookAndFeel);
+            break;
+    }
+}
+
 void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
                                                  const std::map<juce::String, bool>& knownToggleStates,
                                                  const std::map<juce::String, int>& knownKnobValues)
@@ -365,7 +393,19 @@ void SlotParamsPanel::rebuildForSelectedEffect (std::optional<bool> knownBypass,
         {
             pc.toggle = std::make_unique<juce::ToggleButton>();
             paramsContent.addAndMakeVisible (*pc.toggle);
-            applyToggleStyle (*pc.toggle);
+
+            // A genuine two-named-option switch (e.g. Chorus/Vibrato's Mode) gets the two-option
+            // style + its real option words instead of a plain ON/OFF rocker - see
+            // ParamDefinition::optionOffLabel/optionOnLabel's own doc comment.
+            if (! param.optionOffLabel.empty() && ! param.optionOnLabel.empty())
+            {
+                setTwoOptionSwitchLabels (*pc.toggle, param.optionOffLabel, param.optionOnLabel);
+                applyTwoOptionSwitchStyle (*pc.toggle);
+            }
+            else
+            {
+                applyToggleStyle (*pc.toggle);
+            }
 
             // Only seeded when SlotConfig.h's confirmedRawTagForKey() has an actual confirmed raw
             // tag for this param - every other toggle just keeps its default (unchecked) state, no

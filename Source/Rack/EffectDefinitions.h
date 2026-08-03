@@ -43,6 +43,17 @@ namespace Rack::EffectDefinitions
         int maxValue = 127;
         int step = 1;
         std::vector<SelectOption> options; // only meaningful for `selector`
+
+        // Only meaningful for `toggle`, and only set for a genuine two-named-option switch (e.g.
+        // "Chorus"/"Vibrato", "Tri"/"Sine") as opposed to a true on/off control (Bypass, "Vibrato
+        // On/Off") - both empty means "plain on/off", rendered as a rocker switch (see ToggleStyle.h);
+        // both non-empty means a two-option switch showing these real words instead of ON/OFF (see
+        // TwoOptionSwitchStyle.h). optionOffLabel is the false/0-63 state, optionOnLabel is
+        // true/64-127 - only Chorus/Vibrato's split is hardware-confirmed (see
+        // docs/master-control-map.md); the others follow the same "first word in the label = off"
+        // convention but are unconfirmed.
+        std::string optionOffLabel;
+        std::string optionOnLabel;
     };
 
     // The 16 signal-chain slot categories a rig position can hold (ElevenRack's

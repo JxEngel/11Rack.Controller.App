@@ -25,6 +25,16 @@ namespace Rack::EffectDefinitions
             return p;
         }
 
+        // A toggle whose two states are genuine named alternatives (e.g. "Chorus"/"Vibrato") rather
+        // than a true on/off - see ParamDefinition::optionOffLabel/optionOnLabel's own doc comment.
+        ParamDefinition twoOptionToggle (std::string key, std::string label, std::string offLabel, std::string onLabel)
+        {
+            ParamDefinition p = toggle (std::move (key), std::move (label));
+            p.optionOffLabel = std::move (offLabel);
+            p.optionOnLabel = std::move (onLabel);
+            return p;
+        }
+
         ParamDefinition selector (std::string key, std::string label, std::vector<SelectOption> options)
         {
             ParamDefinition p;
@@ -98,7 +108,7 @@ namespace Rack::EffectDefinitions
                               // per-effect switch - kept for fidelity even though it's a slightly
                               // odd fit for rig-level globals
                     knob ("RVol", "Volume"),
-                    toggle ("RMno", "Mono/Stereo"),
+                    twoOptionToggle ("RMno", "Mono/Stereo", "Mono", "Stereo"),
                     knob ("Tmpo", "Tempo", 120000, 6000000, 1),
                     knob ("FXc1", "Fxc1"),
                     knob ("FXc2", "Fxc2"),
@@ -282,7 +292,7 @@ namespace Rack::EffectDefinitions
 
             // --- Volume Pedal ---
             addGroup (all, { 38, 72 }, "Volume Pedal", {
-                bypass(), knob ("Vol ", "Position"), knob ("Min ", "Min Volume"), toggle ("Tapr", "Linear/Log"),
+                bypass(), knob ("Vol ", "Position"), knob ("Min ", "Min Volume"), twoOptionToggle ("Tapr", "Linear/Log", "Linear", "Log"),
             });
 
             // --- Distortion (5 distinct models, each with its own knob labels) ---
@@ -326,7 +336,7 @@ namespace Rack::EffectDefinitions
             addGroup (all, { 11, 39, 40 }, "Chorus/Vibrato", {
                 bypass(), knob ("ChIn", "Chorus"), knob ("VbRt", "Vibrato Rate"),
                 ccSyncSelector ("Sync", "Sync"),
-                knob ("VbDp", "Vibrato Depth"), toggle ("Mode", "Chorus/Vibrato"),
+                knob ("VbDp", "Vibrato Depth"), twoOptionToggle ("Mode", "Chorus/Vibrato", "Chorus", "Vibrato"),
             });
 
             // --- Orange Phaser (2 variants, identical parameters) ---
@@ -349,7 +359,7 @@ namespace Rack::EffectDefinitions
             // same value table. Not yet hardware-tested.
             addGroup (all, { 35, 46 }, "Vibe Phaser", {
                 bypass(), knob ("Volm", "Volume"), knob ("Dpth", "Depth"), knob ("Rate", "Rate"),
-                ccSyncSelector ("Sync", "Sync"), toggle ("Mode", "Chorus/Vibrato"),
+                ccSyncSelector ("Sync", "Sync"), twoOptionToggle ("Mode", "Chorus/Vibrato", "Chorus", "Vibrato"),
             });
 
             // --- Flanger (2 variants, identical parameters) ---
@@ -387,7 +397,7 @@ namespace Rack::EffectDefinitions
             addGroup (all, { 88, 89, 90 }, "Multi Chorus", {
                 bypass(), knob ("Rate", "Rate"), ccSyncSelector ("Sync", "Sync"),
                 knob ("Dpth", "Depth"), knob ("PreD", "Pre-Delay"), knob ("Mix ", "Mix"),
-                toggle ("TriS", "Tri/Sine"), knob ("Voic", "Voices"), knob ("Widt", "Width"),
+                twoOptionToggle ("TriS", "Tri/Sine", "Tri", "Sine"), knob ("Voic", "Voices"), knob ("Widt", "Width"),
                 knob ("LoCt", "Lo Cut"),
             });
 
@@ -506,7 +516,7 @@ namespace Rack::EffectDefinitions
             addGroup (all, { 27, 48 }, "BBD Delay", {
                 bypass(), knob ("Dely", "Delay"), ccSyncSelector ("Sync", "Sync"),
                 knob ("Fdbk", "Feedback"), knob ("Mix ", "Mix"), knob ("Inpt", "Input Level"),
-                toggle ("Mod ", "Mod (Chorus/Vibrato)"), knob ("Dpth", "Depth"),
+                twoOptionToggle ("Mod ", "Mod (Chorus/Vibrato)", "Chorus", "Vibrato"), knob ("Dpth", "Depth"),
                 // Confirmed on real hardware (2026-07-24): Expanded Delay is an on/off switch, not
                 // a knob (the manual has no Chapter 3 description of it at all, so this was
                 // previously unconfirmed and modeled as a knob).

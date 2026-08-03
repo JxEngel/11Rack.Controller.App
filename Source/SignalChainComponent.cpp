@@ -657,6 +657,11 @@ void SignalChainComponent::setToggleStyle (ToggleStyle style)
     applyGlobalsToggleStyle (style);
 }
 
+void SignalChainComponent::setTwoOptionSwitchStyle (TwoOptionSwitchStyle style)
+{
+    paramsPanel.setTwoOptionSwitchStyle (style);
+}
+
 void SignalChainComponent::applyGlobalsKnobStyle (KnobStyle style)
 {
     // A switch (not if/else) so adding a new enumerator without a matching case here warns at

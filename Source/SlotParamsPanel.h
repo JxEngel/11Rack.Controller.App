@@ -3,8 +3,12 @@
 #include <JuceHeader.h>
 #include "GoldKnobLookAndFeel.h"
 #include "KnobStyle.h"
+#include "LeverDotSwitchLookAndFeel.h"
 #include "RockerSwitchLookAndFeel.h"
+#include "SegmentedSwitchLookAndFeel.h"
+#include "SlidingTrackSwitchLookAndFeel.h"
 #include "ToggleStyle.h"
+#include "TwoOptionSwitchStyle.h"
 #include "Rack/RackController.h"
 #include "Rack/EffectDefinitions.h"
 #include "SlotConfig.h"
@@ -67,6 +71,12 @@ public:
     // ParamControls) - see RockerSwitchLookAndFeel.h.
     void setToggleStyle (ToggleStyle style);
 
+    // Same idea again, but only for toggle-kind controls that are a genuine two-named-option
+    // switch (ParamDefinition::optionOffLabel/optionOnLabel both set, e.g. Chorus/Vibrato's Mode) -
+    // a true on/off control (Bypass, "Vibrato On/Off") always stays a rocker switch regardless of
+    // this setting. See TwoOptionSwitchStyle.h.
+    void setTwoOptionSwitchStyle (TwoOptionSwitchStyle style);
+
     // Shows `slot`'s effect-selector + bypass + param controls. If `preferredEffectId` is present
     // in `slot.effectIds`, it's pre-selected instead of `slot.defaultEffectId` - use this when a
     // live Bulk Rig decode says which model is really loaded. If `knownBypass` is present, the
@@ -107,6 +117,11 @@ private:
     // juce::ToggleButton.
     void applyToggleStyle (juce::ToggleButton& toggle);
 
+    // Applies currentTwoOptionSwitchStyle to one two-option toggle-kind control - the two-option
+    // counterpart to applyToggleStyle(), only ever called for a ParamDefinition with both
+    // optionOffLabel/optionOnLabel set (see rebuildForSelectedEffect()).
+    void applyTwoOptionSwitchStyle (juce::ToggleButton& toggle);
+
     // Holds exactly one of slider/toggle/combo, matching `kind` - a plain tagged union would be
     // more compact, but this is clearer for a handful of controls that all need addAndMakeVisible.
     struct ParamControl
@@ -127,8 +142,12 @@ private:
     // a dangling-pointer-on-teardown bug.
     GoldKnobLookAndFeel goldKnobLookAndFeel;
     RockerSwitchLookAndFeel rockerSwitchLookAndFeel;
+    SegmentedSwitchLookAndFeel segmentedSwitchLookAndFeel;
+    SlidingTrackSwitchLookAndFeel slidingTrackSwitchLookAndFeel;
+    LeverDotSwitchLookAndFeel leverDotSwitchLookAndFeel;
     KnobStyle currentKnobStyle = KnobStyle::goldMetallic;
     ToggleStyle currentToggleStyle = ToggleStyle::rockerSwitch;
+    TwoOptionSwitchStyle currentTwoOptionSwitchStyle = TwoOptionSwitchStyle::segmentedSplit;
 
     juce::Label effectChooserLabel { {}, "Effect" };
     juce::ComboBox effectSelector;

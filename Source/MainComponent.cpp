@@ -37,6 +37,10 @@ MainComponent::MainComponent()
     {
         signalChainComponent.setToggleStyle (style);
     };
+    displayOptionsComponent.onTwoOptionSwitchStyleChanged = [this] (TwoOptionSwitchStyle style)
+    {
+        signalChainComponent.setTwoOptionSwitchStyle (style);
+    };
 
     connectToRack();
 

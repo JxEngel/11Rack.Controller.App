@@ -6,6 +6,8 @@ DisplayOptionsComponent::DisplayOptionsComponent()
     addAndMakeVisible (knobStyleSelector);
     addAndMakeVisible (toggleStyleLabel);
     addAndMakeVisible (toggleStyleSelector);
+    addAndMakeVisible (twoOptionSwitchStyleLabel);
+    addAndMakeVisible (twoOptionSwitchStyleSelector);
 
     // Item IDs are (KnobStyle enum value + 1) - see KnobStyle.h for how to add a new style. Only
     // one exists today, but the selector stays in place so a future second style is just one more
@@ -26,6 +28,19 @@ DisplayOptionsComponent::DisplayOptionsComponent()
         if (onToggleStyleChanged)
             onToggleStyleChanged ((ToggleStyle) (toggleStyleSelector.getSelectedId() - 1));
     };
+
+    // Same pattern again - see TwoOptionSwitchStyle.h. Three items, kept in the order they were
+    // reviewed (A/B/C) with segmentedSplit ("A") first and selected by default, per the user's
+    // explicit call.
+    twoOptionSwitchStyleSelector.addItem ("Segmented Split", (int) TwoOptionSwitchStyle::segmentedSplit + 1);
+    twoOptionSwitchStyleSelector.addItem ("Sliding Track", (int) TwoOptionSwitchStyle::slidingTrack + 1);
+    twoOptionSwitchStyleSelector.addItem ("Lever + Dot", (int) TwoOptionSwitchStyle::leverDot + 1);
+    twoOptionSwitchStyleSelector.setSelectedId ((int) TwoOptionSwitchStyle::segmentedSplit + 1, juce::dontSendNotification);
+    twoOptionSwitchStyleSelector.onChange = [this]
+    {
+        if (onTwoOptionSwitchStyleChanged)
+            onTwoOptionSwitchStyleChanged ((TwoOptionSwitchStyle) (twoOptionSwitchStyleSelector.getSelectedId() - 1));
+    };
 }
 
 void DisplayOptionsComponent::resized()
@@ -40,4 +55,9 @@ void DisplayOptionsComponent::resized()
     auto toggleRow = area.removeFromTop (30);
     toggleStyleLabel.setBounds (toggleRow.removeFromLeft (80).reduced (2));
     toggleStyleSelector.setBounds (toggleRow.removeFromLeft (160).reduced (2));
+
+    area.removeFromTop (6);
+    auto twoOptionRow = area.removeFromTop (30);
+    twoOptionSwitchStyleLabel.setBounds (twoOptionRow.removeFromLeft (160).reduced (2));
+    twoOptionSwitchStyleSelector.setBounds (twoOptionRow.removeFromLeft (160).reduced (2));
 }

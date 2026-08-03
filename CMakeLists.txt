@@ -39,6 +39,9 @@ target_sources(ElevenRackController PRIVATE
     Source/SlotParamsPanel.cpp
     Source/GoldKnobLookAndFeel.cpp
     Source/RockerSwitchLookAndFeel.cpp
+    Source/SegmentedSwitchLookAndFeel.cpp
+    Source/SlidingTrackSwitchLookAndFeel.cpp
+    Source/LeverDotSwitchLookAndFeel.cpp
     Source/TapTempoButton.cpp
     Source/SignalChainComponent.cpp
     Source/Rack/SysExFrame.cpp
